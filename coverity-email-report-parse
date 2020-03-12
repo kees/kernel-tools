@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+# Copyright 2019 Kees Cook <keescook@chromium.org>
+# License: GPLv2+
+#
+# Coverity produces way too many false positives for this automation to
+# actually be useful. e.g. IS_ERR() constantly triggers false UAF warnings
+# because coverity can't tell that non-NULL doesn't mean unallocated.
+#
+# Regardless, this will perform "git blame" analysis on reported Coverity
+# failures and direct the warning to the identified authors and related
+# people. (And is currently designed to only get run by me for linux-next.)
+#
+import os, sys, re
+import subprocess, tempfile
+
+# ** CID 1487378:  Null pointer dereferences  (REVERSE_INULL)
+#
+# _____
+# *** CID nnnn: reason (name)
+# /net/dsa/dsa2.c: 849 in dsa_switch_probe()
+# nnn code
+
+# Ignore "^** CID"
+# Collect all CIDs/files between ^___ lines
+
+if len(sys.argv) > 1:
+	report = sys.argv[1]
+	fd = open(report, "r")
+else:
+	report = "stdin"
+	fd = sys.stdin
+
+me = 'keescook+coverity-bot@chromium.org'
+
+ready = False
+path_next = False
+hits = []
+concat = ""
+
+cid = None
+reason = None
+
+
+# curl -sS https://scan.coverity.com/projects/linux-next-weekly-scan | grep "Version:"
+#  <p>Version: next-20191025</p>
+proc = subprocess.Popen(['curl', '-sS', 'https://scan.coverity.com/projects/linux-next-weekly-scan'], stdout = subprocess.PIPE)
+output = proc.stdout.read().decode("utf-8")
+match = re.search(r'Version:\s+([^<]+)<', output)
+if not match:
+	raise ValueError("Bad version from Coverity project page")
+branch = match.group(1)
+
+
+def commit_from_line(file_name, code_line):
+	proc = subprocess.Popen(['git', 'blame', '-lL', code_line+','+code_line, branch, '--', file_name], stdout = subprocess.PIPE)
+	output = proc.stdout.read().decode("utf-8")
+	return output.split(' ', 1)[0]
+
+def parse_commit(commit):
+	proc = subprocess.Popen(['git', 'log', '-1', commit], stdout=subprocess.PIPE)
+	output = proc.stdout.read().decode("utf-8")
+	author = None
+	subject = None
+	others = set()
+	for line in output.splitlines():
+		line = line.rstrip()
+		if line.startswith('Author: '):
+			author = line.split(" ", 1)[1]
+			continue
+		if subject == None:
+			match = re.search(r'^    (.*)$', line)
+			if match:
+				subject = match.group(1)
+				continue
+		match = re.search(r'^    .*-by:\s+(.*@.*)$', line)
+		if match:
+			others.add(match.group(1))
+
+	if author in others:
+		others.remove(author)
+	return subject, author, others
+
+def send_email():
+	info = set()
+	funcs = set()
+	cids = set()
+	issues = set()
+	for file_name,file_offset,function,cid,reason in hits:
+		info.add("%s %s in %s: %s (CID %s)" % (file_name, file_offset, function, reason, cid))
+
+		funcs.add(function)
+		reason = reason.strip()
+		if reason.startswith("("):
+			reason = reason[1:len(reason)-1]
+		else:
+			reason = reason.split(" (", 1)[0]
+		reason = reason.strip()
+		if len(reason) == 0:
+			raise ValueError("empty Coverity reason")
+		cids.add('%s ("%s")' % (cid, reason))
+		issues.add('%s: %s' % (function, reason))
+
+	if len(issues) > 1:
+		subject = "Multiple issues in %s" % (", ".join(funcs))
+	else:
+		for issue in issues:
+			subject = issue
+	subject = "Coverity: %s" % (subject)
+
+	body = "From: coverity-bot <%s>\n\n" % (me)
+	body += """Hello!
+
+This is an experimental automated report about issues detected by Coverity
+from a scan of %s as part of the linux-next weekly scan project:
+https://scan.coverity.com/projects/linux-next-weekly-scan
+
+You're getting this email because you were associated with the identified
+lines of code (noted below) that were touched by recent commits:
+
+""" % (branch)
+
+	seen = set()
+	commits = set()
+	for file_name,file_offset,function,cid,reason in hits:
+		what = "%s %s" % (file_name, file_offset)
+		if what in seen:
+			continue
+		seen.add(what)
+		commit = commit_from_line(file_name, file_offset)
+		commits.add(commit)
+
+	to = set()
+	cc = set()
+	fixes = []
+	for commit in commits:
+		name, author, others = parse_commit(commit)
+		to.add(author)
+		cc |= others
+		fix = '%s ("%s")\n' % (commit[0:12], name)
+		fixes.append(fix)
+		body += fix
+
+	body += "\nCoverity reported the following:\n\n"
+	body += concat
+
+	body += """
+If this is a false positive, please let us know so we can mark it as
+such, or teach the Coverity rules to be smarter. If not, please make
+sure fixes get into linux-next. :) For patches fixing this, please
+include these lines (but double-check the "Fixes" first):
+
+Reported-by: coverity-bot <%s>
+""" % (me)
+
+	for cid in cids:
+		body += 'Addresses-Coverity-ID: %s\n' % (cid)
+	for fix in fixes:
+		body += 'Fixes: %s\n' % (fix)
+
+	body += """
+Thanks for your attention!
+
+-- 
+Coverity-bot
+"""
+
+	cc = list(cc)
+	cc.append("Gustavo A. R. Silva <gustavo@embeddedor.com>")
+	cc.append("linux-next@vger.kernel.org")
+
+	template = tempfile.NamedTemporaryFile(mode='w', prefix='mutt-', encoding='utf-8')
+	template.write(body)
+	template.flush()
+
+	cc_args = []
+	for person in cc:
+		cc_args += ['-c', person]
+	cmd = ['mutt'] + cc_args + ['-H', template.name, '-b', me, '-s', subject, '-e', 'unset signature'] + list(to)
+
+	print("To: %s" % (",\n\t".join(to)))
+	if len(cc) > 0:
+		print("Cc: %s" % (",\n\t".join(cc)))
+	print("Subject: %s\n" % (subject))
+	print("%s\n" % (body))
+
+	want = ''
+	while not want in ['e','s','k','q']:
+		print("(E)dit, (S)end, s(K)ip, (Q)uit?")
+		want = sys.stdin.readline().strip().lower()
+	if want == 'q':
+		print("Quit")
+		sys.exit(0)
+	if want == 'e':
+		# Send with edit:
+		print("Edit email")
+		os.spawnvp(os.P_WAIT, 'mutt', cmd)
+		return
+	if want == 'k':
+		print("Skip email")
+		return
+	if want == 's':
+		print("Send email")
+		# To auto-send:
+		proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=open("/dev/null", "r"))
+		output = proc.stdout.read().decode("utf-8")
+		if len(output) != 0:
+			print(output)
+		return
+	raise ValueError("Impossible want value: '%s'" % (want))
+
+line_num = 0
+for line in fd:
+	line_num += 1
+	line = line.rstrip()
+
+	# Flush reporting queue!
+	if line.startswith("_________"):
+		if not ready:
+			ready = True
+
+		if len(hits) == 0:
+			continue
+
+		send_email()
+
+		hits = []
+		concat = ""
+		continue
+
+	if line.startswith('** CID '):
+		ready = False
+		continue
+
+	if not ready:
+		continue
+
+	if len(line.strip()) == 0:
+		continue
+
+	# Avoid MUAs hiding lines starting with ">" as if they were quotes.
+	if line.startswith('>>>'):
+		line = line.replace(">>>", "vvv", 1)
+	concat += line + "\n"
+
+	match = re.search(r'^\*\*\* CID (\d+):\s+(.*)$', line)
+	if match:
+		cid = match.group(1)
+		reason = match.group(2)
+		continue
+
+	match = re.search(r'^/(\S+):\s+(\d+)\s+in\s+(.*)$', line)
+	if match:
+		file_name = match.group(1)
+		file_offset = match.group(2)
+		function = match.group(3)
+		hits.append( (file_name, file_offset, function, cid, reason) )
