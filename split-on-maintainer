@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+# Copyright 2020 Kees Cook <keescook@chromium.org>
+# License: GPLv2+
+#
+# Split a single large patch into separate per-maintainer patches based on
+# the MAINTAINERS entries.
+#
+# How to send the results: (Note that the "to" argument is intentionally a
+# space to have git use the "To:" from the patches. Additional CCs can be
+# also added if needed.)
+#
+# for i in 0*.patch; do git send-email --transfer-encoding=8bit --8bit-encoding=UTF-8 --from='Kees Cook <keescook@chromium.org>' --to=' ' --cc='...' $i; done
+#
+import sys, re, fnmatch, subprocess, argparse
+
+opts = argparse.ArgumentParser(description='Split single patch by maintainer')
+opts.add_argument('patches', metavar='PATCH', nargs=1, help='Patch to split')
+opts.add_argument('--build-log', metavar='LOG', help='Compiler output for warning extraction')
+args = opts.parse_args()
+
+chunks = dict()
+files = []
+who = 'unknown author'
+date = ''
+text = ''
+sob = ''
+subject = ''
+
+# TODO: this doesn't actually deal well with multiple files, so don't
+# (see nargs=1 above).
+for arg in args.patches:
+	path = None
+	body = False
+	in_sob = False
+	trailer = False
+	diff = False
+	for line in open(arg):
+		# diff --git a/net/decnet/dn_dev.c b/net/decnet/dn_dev.c
+		# index b2c26b081134..41f803e35da3 100644
+		# --- a/net/decnet/dn_dev.c
+		# +++ b/net/decnet/dn_dev.c
+		if line.startswith('diff '):
+			diff = True
+			path = '/'.join(line.split(' ').pop().strip().split('/')[1:])
+			files.append(path)
+			chunks.setdefault(path, '')
+
+		if not diff and not trailer:
+			if not body:
+				if line == '\n':
+					body = True
+					continue
+				if line.startswith('Author:') or line.startswith('From:'):
+					who = line.split(':', 1)[1].strip()
+					continue
+				if line.startswith('Date:'):
+					date = line.split(':', 1)[1].strip()
+					continue
+				if line.startswith('Subject:'):
+					subject = line.split(':', 1)[1].strip()
+					if subject.startswith('[PATCH] '):
+						subject = subject[8:]
+					continue
+				continue
+			if line.startswith('[1]') or '-by: ' in line:
+				in_sob = True
+			if line == "---\n":
+				trailer = True
+				continue
+
+			if in_sob:
+				sob += line.rstrip() + "\n"
+			else:
+				text += line.rstrip() + "\n"
+
+		if path == None:
+			continue
+
+		chunks[path] += line
+
+# Parse a build log to look for matching warnings...
+logs = dict()
+if args.build_log:
+	filepath = None
+	for line in open(args.build_log):
+		# drivers/tty/n_tty.c: In function ‘__process_echoes’:
+		# drivers/tty/n_tty.c:657:18: warning: statement will never be executed [-Wswitch-unreachable]
+		# 1657 |     unsigned int num_chars, num_bs;
+		#      |                  ^~~~~~~~~
+		if '|' not in line:
+			if ':' not in line:
+				raise ValueError("unparseable build log line: %s" % (line.rstrip()))
+			filepath = line.split(':', 1)[0]
+		if filepath == None:
+			raise ValueError('Unable to find filename in build log: %s' % (args.build_log))
+		logs.setdefault(filepath, '')
+		logs[filepath] += line
+
+# Now parse MAINTAINERS to find how to split up the chunks...
+parsing = False
+patterns = dict()
+email = dict()
+output = dict()
+contains = dict()
+areas = []
+area = None
+for line in open('MAINTAINERS'):
+	if not parsing:
+		# Start parsing once we see all-capitals (and/or numbers)
+		if re.match(r'[A-Z0-9]{2}', line):
+			parsing = True
+		else:
+			continue
+	if line.startswith('\n'):
+		area = None
+		continue
+
+	if area == None:
+		area = line.strip()
+		areas.append(area)
+		output.setdefault(area, '')
+		contains.setdefault(area, [])
+		patterns.setdefault(area, {'re':[], 'exclude':[], 'content':[]})
+		email.setdefault(area, {'maint':[], 'cc':[]})
+		continue
+
+	try:
+		mark, rest = line.strip().split(':', 1)
+	except:
+		print(line.strip())
+		raise
+	rest = rest.strip()
+	if mark in ['M', 'P', 'L', 'R']:
+		# Ignore unemailable Person lines.
+		if mark == 'P':
+			if not '@' in rest:
+				continue
+			mark = 'M'
+		if '(' in rest:
+			rest, note = rest.split('(',1)
+			rest = rest.strip()
+			# Skip subscribers-only mailing lists.
+			if 'subscribers-only' in note:
+				continue
+		if mark == 'M':
+			email[area]['maint'].append(rest)
+		else:
+			email[area]['cc'].append(rest)
+	elif mark in ['F', 'X']:
+		pattern = rest
+		# Handle the "catch all" super-globs
+		if pattern == '*/':
+			continue
+		if pattern == '*':
+			pattern = '.*'
+		else:
+			# Otherwise convert glob to simple regex
+			pattern = pattern.replace('.', '\.')
+			pattern = pattern.replace('*', '[^/]+')
+			pattern = pattern.replace('?', '.')
+		if mark == 'F':
+			kind = 're'
+		else:
+			kind = 'exclude'
+		pair = (rest, re.compile(pattern))
+		patterns[area]['re'].append(pair)
+	elif mark in ['N']:
+		pair = (rest, re.compile(rest))
+		patterns[area]['re'].append(pair)
+	elif mark in ['K']:
+		patterns[area]['content'].append(rest)
+	elif mark in ['S']:
+		if rest in ['Supported', 'Maintained', 'Odd Fixes', 'Odd fixes', 'Buried alive in reporters']:
+			continue
+		elif rest in ['Orphan', 'Obsolete', 'Orphan / Obsolete']:
+			# Ignore orphan or obsolete areas
+			area = None
+			parsing = False
+			continue
+		else:
+			raise ValueError("Unknown 'S)tatus' for area '%s': %s" % (area, rest))
+
+def maintained(area, path):
+	debug = False
+	#if area == 'THE REST':
+	#	debug = True
+
+	match = ''
+	for pattern, matcher in patterns[area]['exclude']:
+		if debug:
+			print("%s -> %s" % (pattern, matcher))
+		if matcher.match(path):
+			return ''
+	for pattern, matcher in patterns[area]['re']:
+		if debug:
+			print("%s -> %s" % (pattern, matcher))
+		if matcher.match(path):
+			if len(pattern) > len(match):
+				match = pattern
+	return match
+
+def get_prefix(area, paths):
+	ret = subprocess.run(['git', 'log', '-n', '64', '--no-merges', '--oneline', '--'] + paths,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.STDOUT, check=False)
+	commits = str(ret.stdout, 'utf-8').strip().splitlines()
+	prefixes = dict()
+	for commit in commits:
+		title = commit.split(' ', 1)[1].strip()
+		# Drop old-style []s
+		if '[PATCH]' in title:
+			title = title.replace('[PATCH]','').strip()
+		if '[' in title:
+			prefix = title.partition(']')[0].replace('[','').replace(']','')
+			title = title.replace('[%s]' % (prefix), '').strip()
+			if not title.startswith(':'):
+				prefix += ': '
+			title = prefix.lower() + title
+		if ':' in title:
+			prefix = title.rpartition(':')[0]
+			if not prefix in ['net']:
+				prefixes.setdefault(prefix, 0)
+				prefixes[prefix] += 1
+	best = 0
+	prefix = None
+	for title in prefixes:
+		if prefixes[title] > best:
+			best = prefixes[title]
+			prefix = title
+	if prefix == None:
+		prefix = area
+
+	return prefix
+
+for path in files:
+	longest = ''
+	hit = None
+	sticky = None
+	for area in areas:
+		match = maintained(area, path)
+		if len(match) > len(longest):
+			longest = match
+			hit = area
+	if len(longest) == 0:
+		raise ValueError("Catch-all didn't catch all!? %s" % (path))
+
+	output[hit] += chunks[path]
+	contains[hit].append(path)
+
+counter = 0
+for area in output:
+	if len(output[area]) == 0:
+		continue
+
+	#print("\n".join(contains[area]))
+	print("%s ..." % area)
+	for path in contains[area]:
+		print("\t%s" % path)
+	prefix = get_prefix(area, contains[area])
+	print("\t\tSubject: %s: %s" % (prefix, subject))
+
+	counter += 1
+	fname = "%s %s" % (prefix, subject)
+	fname = re.sub(r'[^a-zA-Z0-9]+', '-', fname)
+	out = open("%04d-%s.patch" % (counter, fname), "w")
+	print("From auto-maintainer-split", file=out)
+	print("From: %s" % (who), file=out)
+	print("Date: %s" % (date), file=out)
+	# Make sure this goes somewhere
+	if len(email[area]['maint']) == 0:
+		email[area]['maint'].append('linux-kernel@vger.kernel.org')
+	else:
+		email[area]['cc'].append('linux-kernel@vger.kernel.org')
+
+	ccs = email[area]['cc']
+
+	# There are some unwritten rules about top-level maintainers...
+	overrides = []
+	for path in contains[area]:
+		if path.startswith('drivers/char/') or \
+		   path.startswith('drivers/misc/') or \
+		   path.startswith('drivers/usb/'):
+			overrides.append('Greg Kroah-Hartman <gregkh@linuxfoundation.org>')
+	if 'linux-mm@kvack.org' in ccs:
+		overrides.append('Andrew Morton <akpm@linux-foundation.org>')
+
+	tos = overrides
+	tos.extend(x for x in email[area]['maint'] if x not in overrides)
+
+	print("To: %s" % (", ".join(tos)), file=out)
+	print("Cc: %s" % (", ".join(ccs)), file=out)
+	if subject != '':
+		# Explicit subject
+		print("Subject: [PATCH] %s: %s" % (prefix, subject), file=out)
+		print("", file=out)
+		print(text.strip(), file=out)
+	else:
+		# Body contains the subject
+		combined = text.strip()
+		if not combined.startswith('[PATCH] '):
+			combined = "[PATCH] %s: %s" % (prefix, combined)
+		print("Subject: %s" % (combined), file=out)
+
+	print("", file=out)
+	# Emit any log lines
+	if args.build_log:
+		for path in contains[area]:
+			print(logs[path], file=out)
+
+	print(sob.rstrip(), file=out)
+	print("---", file=out)
+	print(subprocess.run(["diffstat", "-p1"], stdout=subprocess.PIPE,
+			     input=output[area], encoding='utf8').stdout, file=out)
+	print(output[area], file=out)
+	out.close()
