@@ -152,7 +152,7 @@ coverity_collect()
 	echo "collect $latest: tar ..."
 	time tar cf "$build_branch".tar cov-int
 	echo ""
-	echo "collect: xz ..."
+	echo "collect $latest: xz ..."
 	time xz -z -9 -T 48 "$build_branch".tar
 	echo ""
 
