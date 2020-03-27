@@ -70,7 +70,7 @@ coverity_prepare()
 			return
 	fi
 
-	echo "prepare: ..."
+	echo "prepare $latest: ..."
 
 	# prepare worktree
 	rm -rf "$coverity_build_dir"
@@ -106,7 +106,7 @@ coverity_build()
 	fi
 
 	# coverity build
-	echo "build: ..."
+	echo "build $latest: ..."
 	rm -rf build.log cov-int "$build_branch".tar "$build_branch".tar.xz
 	cov-build --help 2>/dev/null || true
 
@@ -149,7 +149,7 @@ coverity_collect()
 	fi
 
 	# collect results
-	echo "collect: tar ..."
+	echo "collect $latest: tar ..."
 	time tar cf "$build_branch".tar cov-int
 	echo ""
 	echo "collect: xz ..."
@@ -199,7 +199,7 @@ coverity_upload()
 	fi
 
 	# upload to coverity
-	echo "upload: ..."
+	echo "upload $latest: ..."
 	time curl -sS --form token="$coverity_token" \
 	  --form email="$coverity_email" \
 	  --form file=@"$build_branch".tar.xz \
@@ -235,6 +235,8 @@ coverity_upload()
 	# mark as uploaded
 	echo "$latest" > "$CACHE"/upload.stamp.new
 	mv "$CACHE"/upload.stamp.new "$CACHE"/upload.stamp
+
+	echo "$latest successfully sent for analysis"
 }
 
 coverity_prepare
