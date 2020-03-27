@@ -202,7 +202,7 @@ coverity_upload()
 	echo "upload: ..."
 	time curl -sS --form token="$coverity_token" \
 	  --form email="$coverity_email" \
-	  --form file=@"$build_branc".tar.xz \
+	  --form file=@"$build_branch".tar.xz \
 	  --form version="$latest" \
 	  --form description="$build_branch" \
 	  -o coverity-upload.log \
