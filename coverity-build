@@ -235,8 +235,6 @@ coverity_upload()
 	# mark as uploaded
 	echo "$latest" > "$CACHE"/upload.stamp.new
 	mv "$CACHE"/upload.stamp.new "$CACHE"/upload.stamp
-
-	echo "$latest successfully sent for analysis"
 }
 
 coverity_prepare
