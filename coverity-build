@@ -66,7 +66,7 @@ coverity_prepare()
 	latest=$(git describe --tags --abbrev=0 "$build_branch"/master)
 	current=$(cat "$CACHE"/prepare.stamp)
 	if [ "$latest" = "$current" ]; then
-			echo "$latest already prepared" >&2
+			#echo "$latest already prepared" >&2
 			return
 	fi
 
@@ -101,7 +101,7 @@ coverity_build()
 	latest=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
 	current=$(cat "$CACHE"/build.stamp)
 	if [ "$latest" = "$current" ]; then
-			echo "$latest already built" >&2
+			#echo "$latest already built" >&2
 			return
 	fi
 
@@ -144,7 +144,7 @@ coverity_collect()
 	latest=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
 	current=$(cat "$CACHE"/collect.stamp)
 	if [ "$latest" = "$current" ]; then
-			echo "$latest already collected" >&2
+			#echo "$latest already collected" >&2
 			return
 	fi
 
@@ -188,7 +188,7 @@ coverity_upload()
 	latest=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
 	current=$(cat "$CACHE"/upload.stamp)
 	if [ "$latest" = "$current" ]; then
-			echo "$latest already uploaded" >&2
+			#echo "$latest already uploaded" >&2
 			return
 	fi
 
