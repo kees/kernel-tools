@@ -1,0 +1,5 @@
+#!/bin/bash
+for i in "$@"; do
+#	git log -1 --oneline "$i"
+	git log -1 --pretty='%h ("%s")' "$i"
+done
