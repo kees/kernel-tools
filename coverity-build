@@ -9,24 +9,25 @@
 set -e
 
 # prepare environment
-CONFIG="$HOME/.config/coverity"
-CACHE="$HOME/.cache/coverity"
+CONFIG="$HOME/.config/coverity-build"
+CACHE="$HOME/.cache/coverity-build"
 mkdir -p "$CONFIG" "$CACHE"
 
 # Only run one at a time
 exec 99>"$CACHE"/run.lock
 if flock -en 99; then :
 else
-	echo "already running" >&2
-	exit 1
+	#echo "already running" >&2
+	exit 0
 fi
 
 if [ ! -r "$CONFIG/settings" ]; then
 	echo "echo 'Please update $CONFIG/settings with your Coverity settings' >&2" >> "$CACHE/settings"
 	echo "exit 1" >> "$CONFIG/settings"
-	echo '# Coverity project name. e.g. "linux-next+weekly+scan" for:' >> "$CONFIG/settings"
-	echo "# https://scan.coverity.com/builds?project=linux-next+weekly+scan" >> "$CONFIG/settings"
-	echo "coverity_project=name-of-project" >> "$CONFIG/settings"
+	echo '# Coverity project name as it appears on the dashboard, with any spaces.' >> "$CONFIG/settings"
+	echo '# e.g. "linux-next weekly scan" for' >> "$CONFIG/settings"
+	echo '# https://scan.coverity.com/projects/linux-next-weekly-scan' >> "$CONFIG/settings"
+	echo 'coverity_project="fancy-pants project"' >> "$CONFIG/settings"
 	echo "# Email address of admin account in project" >> "$CONFIG/settings"
 	echo "coverity_email=you@example.com" >> "$CONFIG/settings"
 	echo "# Token for project analysis uploads" >> "$CONFIG/settings"
@@ -60,7 +61,7 @@ coverity_prepare()
 
 	# fetch latest tree
 	cd "$source_git"
-	git fetch "$build_branch"
+	git fetch -q "$build_branch"
 
 	# skip unless there a newly added branch tag
 	latest=$(git describe --tags --abbrev=0 "$build_branch"/master)
@@ -192,6 +193,16 @@ coverity_upload()
 			return
 	fi
 
+	url=$(echo "$coverity_project" | sed -e 's/ /-/g')
+	scanned=$(curl -so- "https://scan.coverity.com/projects/$url" | grep '<p>Version: ' | awk -F": " '{print $2}' | cut -d'<' -f1)
+	if [ "$latest" = "$scanned" ]; then
+		#echo "$scanned already present on dashboard"
+		# mark as uploaded
+		echo "$latest" > "$CACHE"/upload.stamp.new
+		mv "$CACHE"/upload.stamp.new "$CACHE"/upload.stamp
+		return
+	fi
+
 	when=$(at_check)
 	if [ -n "$when" ] ; then
 		echo "$latest already queued for upload on $when" >&2
@@ -200,13 +211,15 @@ coverity_upload()
 
 	# upload to coverity
 	echo "upload $latest: ..."
-	time curl -sS --form token="$coverity_token" \
+	ls -la "$build_branch".tar.xz
+	url=$(echo "$coverity_project" | sed -e 's/ /+/g')
+	time curl --limit-rate 800K -sS --form token="$coverity_token" \
 	  --form email="$coverity_email" \
 	  --form file=@"$build_branch".tar.xz \
 	  --form version="$latest" \
 	  --form description="$build_branch" \
 	  -o coverity-upload.log \
-	  'https://scan.coverity.com/builds?project='"$coverity_project"
+	  'https://scan.coverity.com/builds?project='"$url"
 	echo ""
 
 	# Two known results:
@@ -229,6 +242,9 @@ coverity_upload()
 	else
 		echo "Unexpected upload report:" >&2
 		cat coverity-upload.log >&2
+
+		AT=$(date --date="+1 hour" +'%Y%m%d%H%M')
+		echo "$0 --scheduled 2>&1 | $coverity_cron_pipe" | at -t "$AT"
 		exit 1
 	fi
 

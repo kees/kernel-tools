@@ -61,11 +61,15 @@ def parse_commit(commit):
 	output = proc.stdout.read().decode("utf-8")
 	author = None
 	subject = None
+	date = None
 	others = set()
 	for line in output.splitlines():
 		line = line.rstrip()
 		if line.startswith('Author: '):
-			author = line.split(" ", 1)[1]
+			author = line.split(" ", 1)[1].strip()
+			continue
+		if line.startswith('Date: '):
+			date = line.split(" ", 1)[1].strip()
 			continue
 		if subject == None:
 			match = re.search(r'^    (.*)$', line)
@@ -78,7 +82,7 @@ def parse_commit(commit):
 
 	if author in others:
 		others.remove(author)
-	return subject, author, others
+	return subject, date, author, others
 
 def send_email():
 	info = set()
@@ -98,6 +102,7 @@ def send_email():
 		if len(reason) == 0:
 			raise ValueError("empty Coverity reason")
 		cids.add('%s ("%s")' % (cid, reason))
+
 		issues.add('%s: %s' % (function, reason))
 
 	if len(issues) > 1:
@@ -110,12 +115,12 @@ def send_email():
 	body = "From: coverity-bot <%s>\n\n" % (me)
 	body += """Hello!
 
-This is an experimental automated report about issues detected by Coverity
-from a scan of %s as part of the linux-next weekly scan project:
+This is an experimental semi-automated report about issues detected by
+Coverity from a scan of %s as part of the linux-next scan project:
 https://scan.coverity.com/projects/linux-next-weekly-scan
 
 You're getting this email because you were associated with the identified
-lines of code (noted below) that were touched by recent commits:
+lines of code (noted below) that were touched by commits:
 
 """ % (branch)
 
@@ -133,12 +138,12 @@ lines of code (noted below) that were touched by recent commits:
 	cc = set()
 	fixes = []
 	for commit in commits:
-		name, author, others = parse_commit(commit)
+		name, date, author, others = parse_commit(commit)
 		to.add(author)
 		cc |= others
-		fix = '%s ("%s")\n' % (commit[0:12], name)
+		fix = '%s ("%s")' % (commit[0:12], name)
 		fixes.append(fix)
-		body += fix
+		body += "  %s\n    %s\n" % (date, fix)
 
 	body += "\nCoverity reported the following:\n\n"
 	body += concat
