@@ -44,6 +44,8 @@ if [ ! -r "$CONFIG/settings" ]; then
 	echo "# Name of remote tree (with a 'master' branch) that contains" >> "$CONFIG/settings"
 	echo "# sequential tags. e.g. 'linux-next'" >> "$CONFIG/settings"
 	echo "build_branch=branch-to-track-for-master-tags" >> "$CONFIG/settings"
+	echo "# execution wrapper tool (if any)" >> "$CONFIG/settings"
+	echo "wrapper=" >> "$CONFIG/settings"
 fi
 . "$CONFIG/settings"
 
@@ -84,11 +86,14 @@ coverity_prepare()
 	git checkout -q HEAD
 
 	# want to compile as much of the code base as possible
-	make allmodconfig >/dev/null
+	$wrapper make allmodconfig >/dev/null
 
 	# Disable known-broken configs
 	#./scripts/config -d CACHE_DRM_AMDGPU
-	#make olddefconfig >/dev/null
+	#$wrapper make olddefconfig >/dev/null
+
+	# Clear build failure conditions -- we have new source!
+	rm -f "$CACHE"/build.stamp.fail
 
 	echo "$latest" > "$CACHE"/prepare.stamp.new
 	mv "$CACHE"/prepare.stamp.new "$CACHE"/prepare.stamp
@@ -106,14 +111,21 @@ coverity_build()
 			return
 	fi
 
+	if [ -e "$CACHE"/build.stamp.fail ]; then
+		# We can go no further with this version.
+		#echo "$latest already failed to build" >&2
+		exit 0
+	fi
+
 	# coverity build
 	echo "build $latest: ..."
 	rm -rf build.log cov-int "$build_branch".tar "$build_branch".tar.xz
-	cov-build --help 2>/dev/null || true
+	$wrapper cov-build --help 2>/dev/null || true
 
 	# Build, reporting warnings/errors before timing details, stop on fail.
 	set +e
-	timing=$(time (cov-build --dir cov-int make -j48 --keep-going >build.log 2>&1) 2>&1)
+	timing=$(time ($wrapper cov-build --dir cov-int \
+			make -j48 --keep-going >build.log 2>&1) 2>&1)
 	rc=$?
 	egrep -i '(error|warning):' build.log
 	echo "$timing"
@@ -121,6 +133,8 @@ coverity_build()
 	set -e
 	if [ $rc -ne 0 ]; then
 		echo "Build failed with exit code $rc" >&2
+		echo "$latest" > "$CACHE"/build.stamp.new
+		mv "$CACHE"/build.stamp.new "$CACHE"/build.stamp.fail
 		exit $rc
 	fi
 
@@ -151,10 +165,10 @@ coverity_collect()
 
 	# collect results
 	echo "collect $latest: tar ..."
-	time tar cf "$build_branch".tar cov-int
+	time $wrapper tar cf "$build_branch".tar cov-int
 	echo ""
 	echo "collect $latest: xz ..."
-	time xz -z -9 -T 48 "$build_branch".tar
+	time $wrapper xz -z -9 -T 48 "$build_branch".tar
 	echo ""
 
 	# mark as collected
@@ -213,7 +227,7 @@ coverity_upload()
 	echo "upload $latest: ..."
 	ls -la "$build_branch".tar.xz
 	url=$(echo "$coverity_project" | sed -e 's/ /+/g')
-	time curl --limit-rate 800K -sS --form token="$coverity_token" \
+	time $wrapper curl --limit-rate 800K -sS --form token="$coverity_token" \
 	  --form email="$coverity_email" \
 	  --form file=@"$build_branch".tar.xz \
 	  --form version="$latest" \
