@@ -1,4 +1,4 @@
-# git shell aliases (`~/.bashrc`)
+# git shell aliases (`~/.bashrc`) (See also "git-scripts")
 
 ```
 # git aliases

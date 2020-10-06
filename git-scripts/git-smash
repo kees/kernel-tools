@@ -1,0 +1,40 @@
+#!/bin/bash
+set -e
+
+INTO="$1"
+if [ -z "$INTO" ]; then
+	INTO="$(git rev-parse HEAD)"
+fi
+
+git commit -a --no-edit --fixup "$INTO"
+EDITOR=true git rebase --autosquash -i "$INTO"^
+exit $?
+
+INTO="$1"
+if [ -z "$INTO" ]; then
+	INTO="HEAD~1"
+fi
+
+SHUFFLER=$(mktemp -t smash-XXXXXX)
+trap "rm -f $SHUFFLER" EXIT
+
+cat >$SHUFFLER <<EOM
+#!/bin/bash
+set -e
+
+# The SHA to move is the last one in the rebase list
+commit=\$(grep '^pick' "\$1" | tail -n1)
+sha=\$(echo "\$commit" | cut -d" " -f2-)
+
+REWRITE=\$(mktemp -t smash-rebase-XXXXXX)
+head -n1 "\$1" >> \$REWRITE
+echo "f \$sha" >> \$REWRITE
+(tail -n +2 "\$1" | grep -v "^\$commit" || true) >> \$REWRITE
+
+mv \$REWRITE \$1
+EOM
+chmod a+x $SHUFFLER
+
+git commit -a -m 'smashed git fixup'
+TARGET="${INTO}~1"
+EDITOR=$SHUFFLER git rebase -i "$TARGET"

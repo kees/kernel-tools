@@ -1,0 +1,7 @@
+#!/bin/bash
+# Try to guess what the latest upstream branch is (useful for linux-next)
+if echo "$1" | grep -q / ; then
+	git describe --tags --abbrev=0 "$1"
+else
+	git describe --tags --abbrev=0 "$1"/master
+fi

@@ -1,0 +1,3 @@
+#!/bin/bash
+# Add new/modified files to staged commit.
+git add $(git status | egrep "^	.*: " | awk '{print $NF}')

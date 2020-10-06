@@ -1,0 +1,11 @@
+#!/bin/bash
+# Look for a given text; if exactly one is found, launch editor there.
+set -e
+out=$(mktemp -t git-vgrep-XXXXXX)
+trap "rm -f $out" EXIT
+git grep -n "$@" | tee "$out"
+if [ "$(cat "$out" | wc -l)" -eq 1 ] ; then
+	file=$(cut -d: -f1 "$out")
+	line=$(cut -d: -f2 "$out")
+	$EDITOR +"$line" "$file"
+fi
