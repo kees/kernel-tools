@@ -48,6 +48,9 @@ if [ ! -r "$CONFIG/settings" ]; then
 	echo "build_branch=branch-to-track-for-master-tags" >> "$CONFIG/settings"
 	echo "# execution wrapper tool (if any)" >> "$CONFIG/settings"
 	echo "wrapper=" >> "$CONFIG/settings"
+	echo "# high-bandwidth host (if any)" >> "$CONFIG/settings"
+	echo "rsync_location=" >> "$CONFIG/settings"
+	echo "rsync_url=" >> "$CONFIG/settings"
 fi
 . "$CONFIG/settings"
 
@@ -227,17 +230,38 @@ coverity_upload()
 	fi
 
 	# upload to coverity
-	echo "upload $latest: ..."
 	ls -la "$build_branch".tar.xz
-	url=$(echo "$coverity_project" | sed -e 's/ /+/g')
-	time $wrapper curl --limit-rate 800K -sS --form token="$coverity_token" \
-	  --form email="$coverity_email" \
-	  --form file=@"$build_branch".tar.xz \
-	  --form version="$latest" \
-	  --form description="$build_branch" \
-	  -o coverity-upload.log \
-	  'https://scan.coverity.com/builds?project='"$url"
-	echo ""
+	if [ -n "${rsync_location:-}" ]; then
+		echo "upload to bandwidth host $latest: ..."
+		time rsync -qa --bwlimit=800K "$build_branch".tar.xz "$rsync_location"/"$build_branch".tar.xz
+
+		echo "requesting pull of $latest: ..."
+		# Ask Coverity to pull from us.
+		time curl -sS \
+		  --form project="$coverity_project" \
+		  --form token="$coverity_token" \
+		  --form email="$coverity_email" \
+		  --form url="$rsync_url/$build_branch.tar.xz" \
+		  --form version="$latest" \
+		  --form description="$build_branch" \
+		  -o coverity-upload.log \
+		  https://scan.coverity.com/builds
+		echo ""
+	else
+		echo "upload $latest: ..."
+
+		# Push to Coverity.
+		url=$(echo "$coverity_project" | sed -e 's/ /+/g')
+		time curl --limit-rate 800K -sS \
+		  --form token="$coverity_token" \
+		  --form email="$coverity_email" \
+		  --form file=@"$build_branch".tar.xz \
+		  --form version="$latest" \
+		  --form description="$build_branch" \
+		  -o coverity-upload.log \
+		  'https://scan.coverity.com/builds?project='"$url"
+		echo ""
+	fi
 
 	# Two known results:
 	#
