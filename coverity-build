@@ -7,6 +7,8 @@
 
 # Fail on any uncaught errors
 set -e
+# Fail on undefined variables
+set -u
 
 # prepare environment
 CONFIG="$HOME/.config/coverity-build"
@@ -52,7 +54,7 @@ fi
 export PATH="$PATH":"$coverity_path"
 
 skip_at_check=
-if [ "$1" = "--scheduled" ] ; then
+if [ "${1:-}" = "--scheduled" ] ; then
 	skip_at_check=1
 fi
 
