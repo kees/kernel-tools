@@ -1,9 +1,0 @@
-#!/bin/bash
-# Find the first tag that contains a given SHA, dropping any trailing ~, ^, etc.
-sha="$1"
-match="$2"
-if [ -z "$match" ]; then
-	# Linux kernel release tags start with "v".
-	match='v*'
-fi
-exec git describe --match "$match" --contains "$sha" | sed 's/[~^].*//'

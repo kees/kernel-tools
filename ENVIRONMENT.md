@@ -1,11 +1,12 @@
 # git shell aliases (`~/.bashrc`) (See also "git-scripts")
 
 ```
-# git aliases
+# git shell aliases
 alias l='git log --oneline'
 alias s='git show'
 alias d='git diff'
 alias latr='git latr | cat'
+alias short='git short'
 ```
 
 
@@ -17,11 +18,22 @@ alias latr='git latr | cat'
 	merge-show = "!sh -c 'merge=$(git merge-find $0 $1) && [ -n \"$merge\" ] && git show $merge'"
 	merge-log-short = "!f() { git log --pretty=oneline \"$1^..$1\"; }; f"
 	merge-log = "!f() { git log \"$1^..$1\"; }; f"
+	smash = "!f() { sha=\"${1:-$(git rev-parse HEAD)}\" && git commit -a --no-edit --fixup \"$sha\" && EDITOR=true git rebase --autosquash -i \"$sha\"^; }; f"
+	contains = "!f() { match=\"${2:-v*}\" && git describe --match \"$match\" --contains \"$1\" | sed 's/[~^].*//'; }; f"
+	latest = "!f() { if [ \"$1\" = \"${1%%/*}\" ]; then branch=\"$1/master\"; else branch=\"$1\"; fi && git describe --tags --abbrev=0 \"$branch\"; }; f"
+	short = "!f() { for i in \"$@\"; do git log -1 --pretty='%h (\"%s\")' \"$i\"; done; }; f"
+	latr = branch --sort=committerdate
+	grpe = grep
 ```
 
 # misc git settings (`~/.gitconfig`)
 
 ```
+[core]
+	abbrev = 12
+[url "https://git.kernel.org"]
+	insteadOf = git://git.kernel.org
+	insteadOf = http://git.kernel.org
 [diff]
 	renames = true
 [rebase]
@@ -31,6 +43,8 @@ alias latr='git latr | cat'
 	confirm = auto
 [rerere]
 	enabled = true
+[format]
+	pretty = fuller
 [b4]
 	attestation-trust-model = tofu
 	attestation-uid-match = strict

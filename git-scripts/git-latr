@@ -1,3 +1,0 @@
-#!/bin/bash
-# Show branchs is commiterdate order
-exec git branch --sort=committerdate "$@"
