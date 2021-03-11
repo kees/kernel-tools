@@ -86,7 +86,7 @@ coverity_prepare()
 	git checkout -q HEAD
 
 	# want to compile as much of the code base as possible
-	$wrapper make allmodconfig >/dev/null
+	$wrapper make -s allmodconfig
 
 	# Disable known-broken configs
 	#./scripts/config -d CACHE_DRM_AMDGPU
@@ -125,7 +125,8 @@ coverity_build()
 	# Build, reporting warnings/errors before timing details, stop on fail.
 	set +e
 	timing=$(time ($wrapper cov-build --dir cov-int \
-			make -j48 --keep-going >build.log 2>&1) 2>&1)
+			make -j$(getconf _NPROCESSORS_ONLN) \
+			     --keep-going >build.log 2>&1) 2>&1)
 	rc=$?
 	egrep -i '(error|warning):' build.log
 	echo "$timing"
