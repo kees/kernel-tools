@@ -237,7 +237,7 @@ coverity_upload()
 		echo "upload to bandwidth host $latest: ..."
 
 		rate=
-		if [ -z "${upload_rate:-}" ]; then
+		if [ -n "${upload_rate:-}" ]; then
 			rate="--bwlimit=$upload_rate"
 		fi
 		time rsync -qa $rate "$build_branch".tar.xz "$rsync_location"/"$build_branch".tar.xz
@@ -260,7 +260,7 @@ coverity_upload()
 		# Push to Coverity.
 		url=$(echo "$coverity_project" | sed -e 's/ /+/g')
 		rate=
-		if [ -z "${upload_rate:-}" ]; then
+		if [ -n "${upload_rate:-}" ]; then
 			rate="--limit-rate $upload_rate"
 		fi
 		time curl $rtae -sS \
