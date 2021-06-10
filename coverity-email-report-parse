@@ -68,7 +68,7 @@ def parse_commit(commit):
 		if line.startswith('Author: '):
 			author = line.split(" ", 1)[1].strip()
 			continue
-		if line.startswith('Date: '):
+		if line.startswith('Date: ') or line.startswith('CommitDate: ') or line.startswith('AuthorDate: '):
 			date = line.split(" ", 1)[1].strip()
 			continue
 		if subject == None:
