@@ -1,0 +1,234 @@
+#!/usr/bin/env python3
+import os, sys, re
+from collections import Counter
+
+# Inspired by:
+# git log --since=2020-01-01 | \
+# >       grep -E '^    [^ ]*(Signed-off|Tested|Reported|Reviewed|Acked)[^ ]*-by:' | \
+# >       cut -d: -f2- |
+# >       sed -e 's/^ //g; s/^.*-by: *//g; s/</ </g; s/  / /g; s/>.*/>/g;' | \
+# >       sed -e 's/^\([^<]*\)<.*>$/\1/g; s/"\(.*\)"/\1/g' | \
+# >       grep -v @syzkaller | \
+# >       sort -u
+
+# Find people participating in 50+ commits since 2020-01-01:
+# git log --since=2020-01-01 | ~/bin/identity-canonicalizer | sort -g | awk '{if ($1 > 49) {print $0}}'
+
+# Find these lines, and keep the email portion
+by = re.compile(r'^    [^ ]*(Signed-off|Tested|Reported|Reviewed|Acked)[^ ]*-by:(.*)')
+# Split name from email, and remove trailing stuff after email (" # for net/")
+trailer = re.compile(r'^(.*)<(.*)>[^>]*$')
+# Unwrap quoted names
+quoted = re.compile(r'^"(.*)"$')
+# Ignore affiliations
+affiliated = re.compile(r'^(.*)\(.*\)$')
+# Ignore these identities, which are bots.
+email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org)$')
+# Ignore these names, which may use a "real" email address, but are considered bots.
+name_ignore = re.compile(r'^(kernel test robot|coverity-bot)$')
+# Ignore one-off typos:
+# b88aef36b87c9787a4db724923ec4f57dfd513f3 name/email mismatch
+typo_ignore = re.compile(r'^(Zdenek Kabelac <mpatocka@redhat.com>)$')
+
+# Best guess adjustment of names for changes, latinization, abbreviation, and typos.
+# match: replacement
+spelling = {
+		"": None,
+		"Ville Syrjala": "Ville Syrjälä",
+		"Alexey Budankov": "Alexei Budankov",
+		"Yuval Basson": "Yuval Bason",
+		"Ricardo Ribalda": "Ricardo Ribalda Delgado",
+		"Sean Wang": "Soul Huang",
+		"Jernej Skrabec": "Jernej Škrabec",
+		"Alexandru M Stan": "Alexandru Stan",
+		"Bindu R": "Bindu Ramamurthy",
+		"Daniel Almeida": "Daniel W. S. Almeida",
+		"Wong, Vee Khee": "Wong Vee Khee",
+		"Gabriel C": "Gabriel Craciunescu",
+		"Enric Balletbo Serra": "Enric Balletbo i Serra",
+		"Yao Lihua": "Lihua Yao",
+		"Klaus Jensen": "Klaus Birkelund Jensen",
+		"Alex Gagniuc": "Alexandru Gagniuc",
+		"Michael Bringmann": "Michael W. Bringmann",
+		"Wang Hui": "Hui Wang",
+		"Rafael Tinoco": "Rafael David Tinoco",
+		"Yi Chen": "Chen Yi",
+		"Lee, Shawn C": "Lee Shawn C",
+		"Eugeniy Paltsev": "Evgeniy Paltsev",
+		"Manish": "Manish Chopra",
+		": Phillip Lougher": "Phillip Lougher",
+		"Aneesh Kumar": "Aneesh Kumar K.V.",
+		"Aneesh Kumar K.V": "Aneesh Kumar K.V.",
+		"zhangyi": "Zhang Yi Z",
+		"Brad Warrum": "Bradley Warrum",
+		"Wang Jian": "Jian Wang",
+		"Jose Bollo": "José Bollo",
+		"Yu Chen": "Chen Yu",
+		"jeffrey.lin": "Jeffrey Lin",
+		"Kevin Wangtao": "Tao Wang",
+		"Vitaly Mayatskih": "Vitaly Mayatskikh",
+		"Oza Oza": "Oza Pawandeep",
+	   }
+
+def flatten(name):
+	return name.lower()
+
+class Person:
+	def __init__(self, email, name=None):
+		self.emails = [email]
+		self.names = [name]
+		self.commits = {}
+
+		self.best_count = 0
+		self.fullnames = {}
+		self.best_name = None
+
+	def add_fullname(self, email, name=None):
+		if name:
+			fullname = "%s <%s>" % (name, email)
+		else:
+			fullname = email
+
+		self.fullnames.setdefault(fullname, 0)
+		self.fullnames[fullname] += 1
+		if self.fullnames[fullname] > self.best_count:
+			self.best_name = fullname
+			self.best_count = self.fullnames[fullname]
+
+	def add_email(self, email):
+		self.emails.append(email)
+
+	def add_name(self, name):
+		self.names.append(name)
+
+	def add_commit(self, sha):
+		self.commits.setdefault(sha, 0)
+		self.commits[sha] += 1
+
+	def dump(self, show_all_emails=False):
+		out = "%d\t%s" % (len(self.commits), self.best_name)
+		if show_all_emails:
+			for fullname in self.fullnames:
+				if fullname != self.best_name:
+					out += "\n\t%s" % (fullname)
+		return out
+
+class Pool:
+	def __init__(self):
+		self.email_to_person = {}
+		self.name_to_person = {}
+		self.people = []
+		# For debugging collisions.
+		self.date = None
+
+	def saw_email(self, person, email):
+		person.add_email(email)
+		self.email_to_person.setdefault(flatten(email), person)
+		return person
+
+	def saw_name(self, person, name):
+		if name:
+			person.add_email(name)
+			self.name_to_person.setdefault(flatten(name), person)
+		return person
+
+	def found(self, sha, email, name=None):
+		person = None
+
+		person_by_email = self.email_to_person.get(flatten(email), None)
+		if name:
+			person_by_name = self.name_to_person.get(flatten(name), None)
+		else:
+			person_by_name = None
+
+		if person_by_name and person_by_email:
+			person = person_by_email
+			# If there are existing people with conflicting details, fail.
+			if person_by_email != person_by_name:
+				print("%s\nCollided %s (%s %s) on two people:\n%s\n\n%s" % (self.date, sha, name, email, person_by_email.dump(show_all_emails=True), person_by_name.dump(show_all_emails=True)), file=sys.stderr)
+				return person
+
+		# If we found a person by email only, add their name.
+		if person_by_email and not person_by_name:
+			person = self.saw_name(person_by_email, name)
+
+		# If we found a person by name only, add their email.
+		if person_by_name and not person_by_email:
+			person = self.saw_email(person_by_name, email)
+
+		# If we found a completely new person, create their entry.
+		if not person:
+			person = Person(email, name)
+			self.people.append(person)
+			self.saw_email(person, email)
+			self.saw_name(person, name)
+
+		# Record this email/name combo.
+		person.add_fullname(email, name)
+		# Record their activity on this sha.
+		person.add_commit(sha)
+
+		return person
+
+	def set_date(self, date):
+		self.date = date.strip()
+
+	def dump(self, show_all_emails=False):
+		out = []
+		for person in self.people:
+			out.append(person.dump(show_all_emails))
+		return out
+
+pool = Pool()
+sha = None
+for line in sys.stdin:
+	if line.startswith('commit '):
+		sha = line.split(' ')[1].strip()
+		continue
+	if line.startswith('Date: ') or line.startswith('AuthorDate: '):
+		pool.set_date(" ".join(line.split(' ')[1:]))
+		continue
+	hit = by.search(line)
+	if not hit:
+		continue
+
+	line = hit.group(2).strip()
+	hit = trailer.search(line)
+	if hit:
+		email = hit.group(2).strip()
+		name = hit.group(1).strip()
+
+		hit = quoted.search(name)
+		if hit:
+			name = hit.group(1).strip()
+		hit = affiliated.search(name)
+		if hit:
+			name = hit.group(1).strip()
+
+		name = spelling.get(name, name)
+	else:
+		email = line
+		name = None
+
+	# Ignore various emails.
+	hit = email_ignore.search(email)
+	if hit:
+		continue
+	if name:
+		# Ignore various names.
+		hit = name_ignore.search(name)
+		if hit:
+			name = None
+		# Skip specific name+email typos.
+		hit = typo_ignore.search('%s <%s>' % (name, email))
+		if hit:
+			continue
+
+	person = pool.found(sha, email, name)
+
+full = False
+if len(sys.argv) > 1:
+	if sys.argv[1] == '--full':
+		full = True
+
+print("\n".join(pool.dump(full)))
