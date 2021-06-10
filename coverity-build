@@ -240,7 +240,7 @@ coverity_upload()
 		if [ -n "${upload_rate:-}" ]; then
 			rate="--bwlimit=$upload_rate"
 		fi
-		time rsync -qa $rate "$build_branch".tar.xz "$rsync_location"/"$build_branch".tar.xz
+		time rsync -qa --delete-before $rate "$build_branch".tar.xz "$rsync_location"/"$build_branch".tar.xz
 
 		echo "requesting pull of $latest: ..."
 		# Ask Coverity to pull from us.
