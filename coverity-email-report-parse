@@ -172,6 +172,7 @@ Coverity-bot
 	cc = list(cc)
 	cc.append("Gustavo A. R. Silva <gustavo@embeddedor.com>")
 	cc.append("linux-next@vger.kernel.org")
+	cc.append("linux-hardening@vger.kernel.org")
 
 	template = tempfile.NamedTemporaryFile(mode='w', prefix='mutt-', encoding='utf-8')
 	template.write(body)
