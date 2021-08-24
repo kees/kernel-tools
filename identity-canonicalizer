@@ -12,7 +12,9 @@ from collections import Counter
 # >       sort -u
 
 # Find people participating in 50+ commits since 2020-01-01:
-# git log --since=2020-01-01 | ~/bin/identity-canonicalizer | sort -g | awk '{if ($1 > 49) {print $0}}'
+# git log --since=2020-01-01 | ~/bin/identity-canonicalizer | sort -g > contributors.txt
+# cat contributors.txt | awk '{if ($1 > 2) {print $0}}' >eligible.txt
+# cat eligible.txt | awk '{if ($1 > 49) {print $0}}' >ballots.txt
 
 # Find these lines, and keep the email portion
 by = re.compile(r'^    [^ ]*(Signed-off|Tested|Reported|Reviewed|Acked)[^ ]*-by:(.*)')
@@ -68,7 +70,24 @@ spelling = {
 		"Kevin Wangtao": "Tao Wang",
 		"Vitaly Mayatskih": "Vitaly Mayatskikh",
 		"Oza Oza": "Oza Pawandeep",
+		"Sunil Kovvuri Goutham": "Sunil Goutham",
+		"Yannick Fertre": "Yannick Fertré",
+		"Wilson Chris P": "Chris Wilson",
+		"Thomas Hellstrm": "Thomas Hellström",
+		"Thomas Hellstrom": "Thomas Hellström",
+		"Howard Chung": "Yun-Hao Chung",
+		"Pandruvada Srinivas": "Srinivas Pandruvada",
+		# Maybe ignore names shorter than 3 chars?
+		"sh": "Hui Su",
 	   }
+
+def guess_name(name):
+	if name == None:
+		return None
+	if ", " in name:
+		name = "%s %s" % tuple(name.split(', ',1))
+	name = spelling.get(name, name)
+	return name
 
 def flatten(name):
 	return name.lower()
@@ -76,18 +95,37 @@ def flatten(name):
 class Person:
 	def __init__(self, email, name=None):
 		self.emails = [email]
-		self.names = [name]
+		self.names = []
 		self.commits = {}
 
 		self.best_count = 0
 		self.fullnames = {}
 		self.best_name = None
 
+		self.add_name(name)
+
+	def has_name(self):
+		if len(self.names) == 0:
+			return False
+		return True
+
+	def has_email(self, email):
+		for known in self.emails:
+			if known == email:
+				return True
+		return False
+
+	def get_email(self):
+		if len(self.emails) == 1:
+			return self.emails[0]
+		raise ValueError("Whoops, trying to get email when more than 1 exist: [%s]",
+				 "] [".join(self.emails))
+
 	def add_fullname(self, email, name=None):
 		if name:
 			fullname = "%s <%s>" % (name, email)
 		else:
-			fullname = email
+			fullname = '%s' % (email)
 
 		self.fullnames.setdefault(fullname, 0)
 		self.fullnames[fullname] += 1
@@ -96,14 +134,22 @@ class Person:
 			self.best_count = self.fullnames[fullname]
 
 	def add_email(self, email):
-		self.emails.append(email)
+		if email not in self.emails:
+			self.emails.append(email)
 
 	def add_name(self, name):
-		self.names.append(name)
+		if name:
+			self.names.append(name)
 
 	def add_commit(self, sha):
 		self.commits.setdefault(sha, 0)
 		self.commits[sha] += 1
+
+	# For combining nameless Person
+	def add_all_commits(self, other):
+		for sha in other.commits:
+			self.commits.setdefault(sha, 0)
+			self.commits[sha] += other.commits[sha]
 
 	def dump(self, show_all_emails=False):
 		out = "%d\t%s" % (len(self.commits), self.best_name)
@@ -111,6 +157,8 @@ class Person:
 			for fullname in self.fullnames:
 				if fullname != self.best_name:
 					out += "\n\t%s" % (fullname)
+			#for commit in self.commits:
+			#	out += "\n\t\t%s" % (commit)
 		return out
 
 class Pool:
@@ -132,7 +180,19 @@ class Pool:
 			self.name_to_person.setdefault(flatten(name), person)
 		return person
 
+	def absorb(self, complete, part):
+		# Take all the commits
+		complete.add_all_commits(part)
+		# Remove old email entry
+		email = flatten(part.get_email())
+		del self.email_to_person[email]
+		# Record email on the complete Person
+		self.saw_email(complete, email)
+		return complete
+
 	def found(self, sha, email, name=None):
+		#if 'dionne@' in email:
+		#	print('track: [%s] %s (%s)' % (name, email, sha), file=sys.stderr)
 		person = None
 
 		person_by_email = self.email_to_person.get(flatten(email), None)
@@ -142,11 +202,21 @@ class Pool:
 			person_by_name = None
 
 		if person_by_name and person_by_email:
-			person = person_by_email
-			# If there are existing people with conflicting details, fail.
-			if person_by_email != person_by_name:
-				print("%s\nCollided %s (%s %s) on two people:\n%s\n\n%s" % (self.date, sha, name, email, person_by_email.dump(show_all_emails=True), person_by_name.dump(show_all_emails=True)), file=sys.stderr)
-				return person
+			# If we find a Person entry with a name, and it has an
+			# email conflict with a Person without a name, merge
+			# the nameless Person with the named Person.
+			if person_by_email != person_by_name and \
+			   not person_by_email.has_name() and \
+			   not person_by_name.has_email(email):
+				#print("Absorbing:\nperson_by_email:\n%s\ninto person_by_name:\n%s" % (person_by_email.dump(show_all_emails=True), person_by_name.dump(show_all_emails=True)), file=sys.stderr)
+				self.absorb(person_by_name, person_by_email)
+				person_by_email = None
+			else:
+				person = person_by_email
+				# If there are existing people with conflicting details, fail.
+				if person_by_email != person_by_name:
+					print("%s\nCollided %s (name:[%s] email:%s) on two people:\n%s\n\n%s" % (self.date, sha, name, email, person_by_email.dump(show_all_emails=True), person_by_name.dump(show_all_emails=True)), file=sys.stderr)
+					return person
 
 		# If we found a person by email only, add their name.
 		if person_by_email and not person_by_name:
@@ -205,7 +275,7 @@ for line in sys.stdin:
 		if hit:
 			name = hit.group(1).strip()
 
-		name = spelling.get(name, name)
+		name = guess_name(name)
 	else:
 		email = line
 		name = None
