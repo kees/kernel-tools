@@ -96,8 +96,9 @@ coverity_prepare()
 	$wrapper make -s allmodconfig
 
 	# Disable known-broken configs
-	#./scripts/config -d CACHE_DRM_AMDGPU
-	#$wrapper make olddefconfig >/dev/null
+	#$wrapper ./scripts/config -d CACHE_DRM_AMDGPU
+	$wrapper ./scripts/config -d WERROR
+	$wrapper make olddefconfig >/dev/null
 
 	# Clear build failure conditions -- we have new source!
 	rm -f "$CACHE"/build.stamp.fail
