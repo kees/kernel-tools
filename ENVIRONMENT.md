@@ -22,8 +22,11 @@ alias short='git short'
 	contains = "!f() { match=\"${2:-v*}\" && git describe --match \"$match\" --contains \"$1\" | sed 's/[~^].*//'; }; f"
 	latest = "!f() { if [ \"$1\" = \"${1%%/*}\" ]; then branch=\"$1/master\"; else branch=\"$1\"; fi && git describe --tags --abbrev=0 \"$branch\"; }; f"
 	short = "!f() { for i in \"$@\"; do git log -1 --pretty='%h (\"%s\")' \"$i\"; done; }; f"
+	b4am = "!f() { b4 am -tlsS -o- \"$@\" | git am; }; f"
+	amm = "!f() { b4 shazam -tlsSA \"$@\"; }; f"
 	latr = branch --sort=committerdate
 	grpe = grep
+	ann = annotate
 ```
 
 # misc git settings (`~/.gitconfig`)
@@ -45,10 +48,13 @@ alias short='git short'
 	enabled = true
 [format]
 	pretty = fuller
+[patatt]
+	signingkey = openpgp:8972F4DFDC6DC026
 [b4]
 	attestation-trust-model = tofu
 	attestation-uid-match = strict
 	thanks-commit-url-mask = https://git.kernel.org/kees/c/%.12s
+	keyringsrc = ~/trusted/kernel/pgpkeys/.keyring
 ```
 
 # bash prompt
