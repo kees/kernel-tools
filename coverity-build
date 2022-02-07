@@ -207,7 +207,8 @@ at_check()
 
 coverity_upload()
 {
-	cd "$coverity_build_dir"
+	# In case we need to add global flags (like --cacert)
+	CURL="curl"
 
 	latest=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
 	current=$(cat "$CACHE"/upload.stamp)
@@ -217,7 +218,7 @@ coverity_upload()
 	fi
 
 	url=$(echo "$coverity_project" | sed -e 's/ /-/g')
-	scanned=$(curl -so- "https://scan.coverity.com/projects/$url" | grep '<p>Version: ' | awk -F": " '{print $2}' | cut -d'<' -f1)
+	scanned=$($CURL -so- "https://scan.coverity.com/projects/$url" | grep '<p>Version: ' | awk -F": " '{print $2}' | cut -d'<' -f1)
 	if [ "$latest" = "$scanned" ]; then
 		#echo "$scanned already present on dashboard"
 		# mark as uploaded
@@ -245,7 +246,7 @@ coverity_upload()
 
 		echo "requesting pull of $latest: ..."
 		# Ask Coverity to pull from us.
-		time curl -sS \
+		time $CURL -sS \
 		  --form project="$coverity_project" \
 		  --form token="$coverity_token" \
 		  --form email="$coverity_email" \
@@ -264,7 +265,7 @@ coverity_upload()
 		if [ -n "${upload_rate:-}" ]; then
 			rate="--limit-rate $upload_rate"
 		fi
-		time curl $rtae -sS \
+		time $CURL $rate -sS \
 		  --form token="$coverity_token" \
 		  --form email="$coverity_email" \
 		  --form file=@"$build_branch".tar.xz \
