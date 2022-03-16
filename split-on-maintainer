@@ -60,6 +60,8 @@ for arg in args.patches:
 					subject = line.split(':', 1)[1].strip()
 					if subject.startswith('[PATCH] '):
 						subject = subject[8:]
+					if subject.startswith('treewide: '):
+						subject = subject[10:]
 					continue
 				continue
 			if line.startswith('[1]') or '-by: ' in line:
