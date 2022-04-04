@@ -2,6 +2,9 @@
  * Execute a static QMAGIC ia32 a.out binary.
  * Copyright 2022 Kees Cook <keescook@chromium.org>
  * License: GPLv2
+ *
+ * For a more complete solution, see also:
+ * https://github.com/siegfriedpammer/run-aout
  */
 #include <stdint.h>
 #include <stdio.h>
