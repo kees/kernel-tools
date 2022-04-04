@@ -276,15 +276,15 @@ coverity_upload()
 		echo ""
 	fi
 
-	# Two known results:
+	# Three known results:
 	#
 	# Build successfully submitted
-	#
-	# -or-
-	#
+	# Your build is already in the queue for analysis. Please wait till analysis finishes before uploading another build.
 	# The build submission quota for this project has been reached. Next submission permitted on or after 2019-Oct-03 11:57 PM UTC
 
 	if grep -q 'Build successfully submitted' coverity-upload.log ; then
+		cat coverity-upload.log >&2
+	elif grep -q 'Your build is already in the queue for analysis' coverity-upload.log ; then
 		cat coverity-upload.log >&2
 	elif grep -q 'The build submission quota for this project has been reached' coverity-upload.log ; then
 		cat coverity-upload.log >&2
