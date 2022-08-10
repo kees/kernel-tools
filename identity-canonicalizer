@@ -18,19 +18,22 @@ from collections import Counter
 
 # Find these lines, and keep the email portion
 by = re.compile(r'^    [^ ]*(Signed-off|Tested|Reported|Reviewed|Acked)[^ ]*-by:(.*)')
-# Split name from email, and remove trailing stuff after email (" # for net/")
-trailer = re.compile(r'^(.*)<(.*)>[^>]*$')
+# Split name from email, and remove trailing stuff after email
+splitter = re.compile(r'^(.*)<(.*)>[^>]*$')
+# HTML mailto
+mailto = re.compile(r'^(.*<[^ ]*) ?<mailto:.*$')
+# Bad email characters
+bad_email = re.compile(r'([ <>])')
 # Unwrap quoted names
 quoted = re.compile(r'^"(.*)"$')
 # Ignore affiliations
 affiliated = re.compile(r'^(.*)\(.*\)$')
-# Ignore these identities, which are bots.
-email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org)$')
+# Ignore these identities, which are bots, collectives, twitter handles, or intentially no email.
+email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org|A cast of thousands|KASAN|Ryota Shiga(?: \(Flatt Security\))?|Thomas Sattler|many different companies|Coverity Static Analyzer.*|Marco Scardovi|https?://.*|Marian Rainer-Harbach|.* \(@[^@]*\))$')
 # Ignore these names, which may use a "real" email address, but are considered bots.
 name_ignore = re.compile(r'^(kernel test robot|coverity-bot)$')
-# Ignore one-off typos:
-# b88aef36b87c9787a4db724923ec4f57dfd513f3 name/email mismatch
-typo_ignore = re.compile(r'^(Zdenek Kabelac <mpatocka@redhat.com>)$')
+# Ignore one-off typos.
+typo_ignore = re.compile(r'^$')
 
 # Best guess adjustment of names for changes, latinization, abbreviation, and typos.
 # match: replacement
@@ -77,6 +80,14 @@ spelling = {
 		"Thomas Hellstrom": "Thomas Hellström",
 		"Howard Chung": "Yun-Hao Chung",
 		"Pandruvada Srinivas": "Srinivas Pandruvada",
+		"Alexey Min": "Alexey Minnekhanov",
+		"Ondrej Jirman": "Ondřej Jirman",
+		"Javier GonzÃ¡lez": "Javier González",
+		"David Airlie": "Dave Airlie",
+		"Zhongjun Tan": "Tan Zhongjun",
+		"Zqiang": "Zhang Qiang",
+		"Qiang.zhang": "Zhang Qiang",
+		"Justin M. Forbes": "Justin Forbes",
 		# Maybe ignore names shorter than 3 chars?
 		"sh": "Hui Su",
 	   }
@@ -85,7 +96,58 @@ email_typos = {
 		'mpatocka redhat com': 'mpatocka@redhat.com',
 		'eraniangoogle.com': 'eranian@google.com',
 		'mgross.linux.intel.com': 'mgross@linux.intel.com',
+		# cb774bd35318c1b4cb61f6f2caac85537d07fbde
+		'aspriel.gmail.com': 'aspriel@gmail.com',
+		# 8a1ec3f3275479292613273a7be2ac87f2a7f6e6
+		'imre.deak.intel.com': 'imre.deak@intel.com',
+		# 8b097881b54cbc23dd78262ed88c9924d00ea457
+		'Vineet Gupta                                          [arc]': 'vgupta@kernel.org',
+		# 0cd9d33ace336bc424fc30944aa3defd6786e4fe
+		'https://github.com/joanbm': 'joanbrugueram@gmail.com',
+		# bcd97734318d1d87bb237dbc0a60c81237b0ac50
+		# ee50e67ba0e17b1a1a8d76691d02eadf9e0f392c
+		'mathew.j.martineau>@linux.intel.com': 'mathew.j.martineau@linux.intel.com',
 	      }
+
+full_replace = {
+		# b88aef36b87c9787a4db724923ec4f57dfd513f3 typo
+		'Zdenek Kabelac <mpatocka@redhat.com>': 'Zdenek Kabelac <zkabelac@redhat.com>',
+		# 77422a8f6f61be1ef64978e9a94f40fed0d1634e typo
+		'Roi Dayan <paulb@mellanox.com>': 'Roi Dayan <roid@nvidia.com>',
+		# b04d910af330b55e1d5d6eb9ecd53a375a9cf81c typo
+		'Longpeng &lt;<a href="mailto:longpeng2@huawei.com" target="_blank">longpeng2@huawei.com</a>&gt;<br>': 'Longpeng(Mike) <longpeng2@huawei.com>',
+		# 81d46d693173a5c86a9b0c648eca1817ad5c0ae5 typo
+		'Longpeng &lt;<a href="mailto:longpeng2@huawei.com" target="_blank">longpeng2@huawei.com</a>&gt;<br></blockquote><div><br></div><div>Acked-by: Jason Wang &lt;<a href="mailto:jasowang@redhat.com">jasowang@redhat.com</a>&gt;</div><div> </div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">': 'Longpeng(Mike) <longpeng2@huawei.com>',
+		# db405774f6a80c5607dcf43ec810f078bb5c660d typo
+		'Greg Kroah-Hartman <gregkh@linuxfoundation.org>Cc: Dave Airlie <airlied@gmail.com>': 'Greg Kroah-Hartman <gregkh@linuxfoundation.org>',
+		# 00bfe94e388fe12bfd0d4f6361b1b1343374ff5b typo
+		'Subbaraya Sundeep <sgoutham@marvell.com>': 'Subbaraya Sundeep <sbhatta@marvell.com>',
+		# Name order and uncolliding
+		'Zhang Rui <rui.zhang@intel.com>': 'Rui Zhang <rui.zhang@intel.com>',
+		# bda24462578ca2b0538d9257509070708ce41acc typo?
+		'Ariel Bernstein <eric.yang2@amd.com>': 'Ariel Bernstein <Eric.Bernstein@amd.com>',
+		# Uncolliding with 'Rong Chen <rong.chen@amlogic.com>'
+		'Rong Chen <rong.a.chen@intel.com>': 'Rong A Chen <rong.a.chen@intel.com>',
+		# Uncolliding with 'aaron.ma@canonical.com'
+		'Aaron Ma <mapengyu@gmail.com>': 'Pengyu Ma <mapengyu@gmail.com>',
+		# 2b9f28d5e8efad34f472542315911c5ee9a65b6c
+		# 9f4ce5d72b8e7a1f750598407c99f9e39dfb12fc
+		'Jason Wang <a class="moz-txt-link-rfc2396E" href="mailto:jasowang@redhat.com">&lt;jasowang@redhat.com&gt; </a>': 'Jason Wang <jasowang@redhat.com>',
+		# fe80536acf8397827be77f9b8ada384b90e790d0
+		'Martin <martin.varghese@nokia.com>': 'Martin Varghese <martin.varghese@nokia.com>',
+		# Various
+		'Taketo Kabe': 'Taketo Kabe <kabe@sra-tohoku.co.jp>',
+		# Various
+		'AngeloGioacchino Del Regno': 'AngeloGioacchino Del Regno <angelogioacchino.delregno@collabora.com>',
+		# Various
+		'Andrey Grodzovsky andrey.grodzovsky@amd.com': 'Andrey Grodzovsky <andrey.grodzovsky@amd.com>',
+		# 5ddf994fa22f78ae3742d72520a8c3e8521d96cd
+		'kernel test robot lkp@intel.com': 'kernel test robot <lkp@intel.com>',
+		# 21f965221e7c42609521342403e8fb91b8b3e76e
+		'Sherlock Holo sherlockya@gmail.com': 'Sherlock Holo <sherlockya@gmail.com>',
+		# Various
+		'Srinivas Pandruvada <srinivas.pI andruvada@linux.intel.com>': 'Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>',
+	     }
 
 def guess_name(name):
 	if name == None:
@@ -171,7 +233,8 @@ class Person:
 				if email.endswith('>'):
 					email = email.split('>')[0]
 			if '@' not in email:
-				raise ValueError("missing @ in: %s" % (fullname))
+				print(self.dump(True), file=sys.stderr)
+				raise ValueError("missing @ in [%s]: %s" % (email, fullname))
 			user, domain = email.split('@', 1)
 			# No +, move on.
 			if '+' not in user:
@@ -249,12 +312,23 @@ class Pool:
 		return complete
 
 	def found(self, sha, email, name=None):
-		#if 'dionne@' in email:
-		#	print('track: [%s] %s (%s)' % (name, email, sha), file=sys.stderr)
+		#if sha == '4965e38fa064056021254af4656b1089a42dc764':
+		#	print('track: %s: %s <%s>' % (sha, name, email), file=sys.stderr)
 		person = None
 
 		if '@' not in email:
-			print("Ignoring email without @ for %s: %s" % (sha, email), file=sys.stderr)
+			report = email
+			if name:
+				report = "%s <%s>" % (name, email)
+			print("%s: ignoring email without @: %s" % (sha, report), file=sys.stderr)
+			return
+		hit = bad_email.search(email)
+		if hit:
+			char = hit.group(1)
+			report = email
+			if name:
+				report = "%s <%s>" % (name, email)
+			print("%s: ignoring email with '%s': %s" % (sha, char, report), file=sys.stderr)
 			return
 
 		person_by_email = self.email_to_person.get(flatten(email), None)
@@ -325,7 +399,32 @@ for line in sys.stdin:
 		continue
 
 	line = hit.group(2).strip()
-	hit = trailer.search(line)
+
+	# Drop comment trailers
+	if '#' in line:
+		line = line.split('#', 1)[0].strip()
+
+	# Fix pasted "mailto" tags
+	hit = mailto.search(line)
+	if hit:
+		line = hit.group(1).strip()
+
+	# Try to fix common trailing typos
+	if '<' in line and not '>' in line:
+		if line.endswith('.') or line.endswith(')'):
+			line = line[:-1]
+		line = line + '>'
+	if line.endswith('>>'):
+		line = line[:-1]
+
+	#if sha == 'b04d910af330b55e1d5d6eb9ecd53a375a9cf81c':
+	#	print("%s: %s" % (sha, line), file=sys.stderr)
+
+	# Perform full-line replacements.
+	line = full_replace.get(line, line)
+
+	# Try to split name from email
+	hit = splitter.search(line)
 	if hit:
 		email = hit.group(2).strip()
 		name = hit.group(1).strip()
@@ -355,6 +454,8 @@ for line in sys.stdin:
 		hit = name_ignore.search(name)
 		if hit:
 			name = None
+
+	if name:
 		# Skip specific name+email typos.
 		hit = typo_ignore.search('%s <%s>' % (name, email))
 		if hit:
