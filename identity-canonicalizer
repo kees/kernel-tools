@@ -81,6 +81,12 @@ spelling = {
 		"sh": "Hui Su",
 	   }
 
+email_typos = {
+		'mpatocka redhat com': 'mpatocka@redhat.com',
+		'eraniangoogle.com': 'eranian@google.com',
+		'mgross.linux.intel.com': 'mgross@linux.intel.com',
+	      }
+
 def guess_name(name):
 	if name == None:
 		return None
@@ -115,6 +121,7 @@ class Person:
 				return True
 		return False
 
+	# Only for "absorb"
 	def get_email(self):
 		if len(self.emails) == 1:
 			return self.emails[0]
@@ -151,6 +158,53 @@ class Person:
 			self.commits.setdefault(sha, 0)
 			self.commits[sha] += other.commits[sha]
 
+	# To find best email address.
+	def collapse_aliases(self):
+		drop = []
+		add = dict()
+		for fullname in self.fullnames:
+			name = None
+			email = fullname
+			if '<' in email:
+				name, email = fullname.split(' <',1)
+				name = name.strip()
+				if email.endswith('>'):
+					email = email.split('>')[0]
+			if '@' not in email:
+				raise ValueError("missing @ in: %s" % (fullname))
+			user, domain = email.split('@', 1)
+			# No +, move on.
+			if '+' not in user:
+				continue
+			# Reconstruct without +... suffix
+			user = user.split('+', 1)[0]
+			email = "%s@%s" % (user, domain)
+			# If this is a novel email, move on.
+			if not self.has_email(email):
+				continue
+
+			if name:
+				collapsed = "%s <%s>" % (name, email)
+			else:
+				collapsed = '%s' % (email)
+			add.setdefault(collapsed, 0)
+			add[collapsed] += self.fullnames[fullname]
+			drop.append(fullname)
+		# Zero out any collapsed entries
+		for fullname in drop:
+			self.fullnames[fullname] = 0
+		# Insert any new counts
+		for fullname in add:
+			self.fullnames.setdefault(fullname, 0)
+			self.fullnames[fullname] += add[fullname]
+		# Recount most used full name.
+		self.best_name = None
+		self.best_count = 0
+		for fullname in self.fullnames:
+			if self.fullnames[fullname] > self.best_count:
+				self.best_name = fullname
+				self.best_count = self.fullnames[fullname]
+
 	def dump(self, show_all_emails=False):
 		out = "%d\t%s" % (len(self.commits), self.best_name)
 		if show_all_emails:
@@ -180,6 +234,10 @@ class Pool:
 			self.name_to_person.setdefault(flatten(name), person)
 		return person
 
+	def collapse_aliases(self):
+		for person in self.people:
+			person.collapse_aliases()
+
 	def absorb(self, complete, part):
 		# Take all the commits
 		complete.add_all_commits(part)
@@ -194,6 +252,10 @@ class Pool:
 		#if 'dionne@' in email:
 		#	print('track: [%s] %s (%s)' % (name, email, sha), file=sys.stderr)
 		person = None
+
+		if '@' not in email:
+			print("Ignoring email without @ for %s: %s" % (sha, email), file=sys.stderr)
+			return
 
 		person_by_email = self.email_to_person.get(flatten(email), None)
 		if name:
@@ -284,6 +346,10 @@ for line in sys.stdin:
 	hit = email_ignore.search(email)
 	if hit:
 		continue
+
+	# Replace email typos.
+	email = email_typos.get(email, email)
+
 	if name:
 		# Ignore various names.
 		hit = name_ignore.search(name)
@@ -295,6 +361,9 @@ for line in sys.stdin:
 			continue
 
 	person = pool.found(sha, email, name)
+
+# Post-process to collapse "+"s in email aliases
+pool.collapse_aliases()
 
 full = False
 if len(sys.argv) > 1:
