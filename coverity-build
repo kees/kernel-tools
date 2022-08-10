@@ -58,6 +58,8 @@ fi
 
 export PATH="$PATH":"$coverity_path"
 
+OBJDIR=build-coverity
+
 skip_at_check=
 if [ "${1:-}" = "--scheduled" ] ; then
 	skip_at_check=1
@@ -92,13 +94,15 @@ coverity_prepare()
 	cd "$coverity_build_dir"
 	git checkout -q HEAD
 
+	mkdir -p "$OBJDIR"
+
 	# want to compile as much of the code base as possible
-	$wrapper make -s allmodconfig
+	$wrapper make O="$OBJDIR" -s allmodconfig
 
 	# Disable known-broken configs
 	#$wrapper ./scripts/config -d CACHE_DRM_AMDGPU
-	$wrapper ./scripts/config -d WERROR
-	$wrapper make olddefconfig >/dev/null
+	$wrapper ./scripts/config --file "$OBJDIR"/.config -d WERROR
+	$wrapper make O="$OBJDIR" olddefconfig >/dev/null
 
 	# Clear build failure conditions -- we have new source!
 	rm -f "$CACHE"/build.stamp.fail
@@ -133,7 +137,7 @@ coverity_build()
 	# Build, reporting warnings/errors before timing details, stop on fail.
 	set +e
 	timing=$(time ($wrapper cov-build --dir cov-int \
-			make -j$(getconf _NPROCESSORS_ONLN) \
+			make O="$OBJDIR" -j$(getconf _NPROCESSORS_ONLN) \
 			     --keep-going >build.log 2>&1) 2>&1)
 	rc=$?
 	egrep -i '(error|warning):' build.log
