@@ -16,6 +16,7 @@
 #
 import sys, re, fnmatch, subprocess, operator
 
+# Update the copy in split-on-maintainer...
 def get_prefixes(area, paths):
 	ret = subprocess.run(['git', 'log', '-n', '64', '--no-merges', '--oneline', '--'] + paths,
 			stdout=subprocess.PIPE,
@@ -35,7 +36,8 @@ def get_prefixes(area, paths):
 			title = prefix.lower() + title
 		if ':' in title:
 			prefix = title.rpartition(':')[0]
-			if not prefix in ['net']:
+			# Ignore useless prefixes.
+			if not prefix in ['net', 'treewide']:
 				prefixes.setdefault(prefix, 0)
 				prefixes[prefix] += 1
 	best = 0
