@@ -2,8 +2,10 @@
 
 This is an ever-growing dump of tips, tricks, discoveries, and wisdom for
 writing [Coccinelle](https://coccinelle.gitlabpages.inria.fr/website/)
-rules for the Linux kernel. When I can't figure it out
-myself, I will ask for help on the [Coccinelle mailing
+rules for the Linux kernel. When I can't
+figure it out myself after studying the [SmPL
+grammar](https://coccinelle.gitlabpages.inria.fr/website/docs/index.html),
+I will ask for help on the [Coccinelle mailing
 list](https://coccinelle.gitlabpages.inria.fr/website/contact.html).
 I have started to collect those answers and my own discoveries here,
 since I frequently end up needing them again in the future.
