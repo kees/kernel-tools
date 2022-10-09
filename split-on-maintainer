@@ -11,7 +11,7 @@
 #
 # for i in 0*.patch; do git send-email --transfer-encoding=8bit --8bit-encoding=UTF-8 --from='Kees Cook <keescook@chromium.org>' --to=' ' --cc='...' $i; done
 #
-import sys, re, fnmatch, subprocess, argparse
+import sys, re, fnmatch, subprocess, operator, tempfile, argparse
 
 opts = argparse.ArgumentParser(description='Split single patch by maintainer')
 opts.add_argument('patches', metavar='PATCH', nargs=1, help='Patch to split')
@@ -220,19 +220,36 @@ def get_prefix(area, paths):
 			title = prefix.lower() + title
 		if ':' in title:
 			prefix = title.rpartition(':')[0]
-			if not prefix in ['net']:
+			# Ignore useless prefixes.
+			if not prefix in ['net', 'treewide']:
 				prefixes.setdefault(prefix, 0)
 				prefixes[prefix] += 1
 	best = 0
 	prefix = None
-	for title in prefixes:
-		if prefixes[title] > best:
-			best = prefixes[title]
-			prefix = title
-	if prefix == None:
-		prefix = area
 
-	return prefix
+	likely = sorted(prefixes.items(), key=operator.itemgetter(1), reverse=True)
+	# Drop pointless prefixes
+	if 'treewide' in likely:
+		likely.remove('treewide')
+	count = len(likely)
+
+	if len(likely):
+		return likely[0][0]
+	return area
+
+def get_ccs(diff_str, author):
+	patch = tempfile.NamedTemporaryFile(mode='w', prefix='get_ccs-', suffix='.patch', encoding='utf-8')
+	patch.write(diff_str)
+	patch.flush()
+
+	ccs = subprocess.run(["./scripts/get_maintainer.pl", "--email",
+			      "--git-min-percent", "15",
+			      "--no-rolestats", patch.name],
+			     stdout=subprocess.PIPE,
+			     encoding='utf8').stdout.splitlines()
+	if author in ccs:
+		ccs.remove(author)
+	return ccs
 
 for path in files:
 	longest = ''
@@ -264,7 +281,8 @@ for area in output:
 	counter += 1
 	fname = "%s %s" % (prefix, subject)
 	fname = re.sub(r'[^a-zA-Z0-9]+', '-', fname)
-	out = open("%04d-%s.patch" % (counter, fname), "w")
+	fname = "%04d-%s.patch" % (counter, fname)
+	out = open(fname, "w")
 	print("From auto-maintainer-split", file=out)
 	print("From: %s" % (who), file=out)
 	print("Date: %s" % (date), file=out)
@@ -288,6 +306,14 @@ for area in output:
 
 	tos = overrides
 	tos.extend(x for x in email[area]['maint'] if x not in overrides)
+
+	# Perform proper "get_maintaers.pl" expansion...
+	ccs.extend(x for x in get_ccs(output[area], who) if x not in tos and x not in ccs)
+
+	# There are some unwritten rules about cross-subsystem CCs...
+	if 'linux-wireless@vger.kernel.org,' in ccs and \
+	   'netdev@vger.kernel.org' not in ccs:
+		ccs.append('netdev@vger.kernel.org')
 
 	print("To: %s" % (", ".join(tos)), file=out)
 	print("Cc: %s" % (", ".join(ccs)), file=out)
