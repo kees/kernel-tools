@@ -245,3 +245,74 @@ expression E;
 	... when != VAR
 ?	VAR = ANYTHING;
 ```
+
+[mailing list answer](https://lore.kernel.org/cocci/b5a57410-f140-dc8c-c9b7-97f033f59cc7@web.de/T/#mad93275d80d2ec6c9eb8505592173ca563f167c7)
+
+## Match variables of a given type
+
+To match variables of a specific type, Coccinelle can do this directly
+without needing to match declarations in code:
+
+```
+@@
+identifier get_random_u32 =~ "get_random_int|prandom_u32|get_random_u32";
+typedef u16;
+u16 v;
+@@
+
+-  v = get_random_u32();
++  v = get_random_u16();
+```
+
+To match only local variables, use `local idexpression u16 v` instead of `u16 v`.
+
+[mailing list answer](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2109170825510.33288@hadrien/)
+[mailing list answer](https://lore.kernel.org/cocci/CAHmME9qj3ePZwnJnaZEy2Ds2J4d40a8P5DZxjtc=sS8=Jep6-w@mail.gmail.com/T/#mc2853837da2477850d19f8a75c93d948d64d9c52)
+
+## Match an arbitrary length identifier across dereferences
+
+To match longer identifiers, like `foo->bar.baz`, it is not possible
+to use the `identifier` metavariable. While `expression EXPR` matches
+`foo->bar.baz`, it will also match much longer expressions, like `(foo + 5) * cow`.
+
+To force an expression to only match the full variable access name, it can
+be limited by matching against the pattern of those dereferences (using
+`i`, `fld`, and `e` to create the pattern that will match an combination
+of dereferences, and limiting the match of `VAR` to only those patterns):
+
+```
+@@
+identifier i, fld;
+expression e;
+expression VAR;
+@@
+
+*	function( \(\(i\|e.fld\|e->fld\) \& VAR\) )
+```
+
+This will match all of these:
+
+```
+function(ptr);
+function(&ptr);
+function(ptr->thing);
+function(&ptr->thing);
+function(ptr->thing.member);
+function(&ptr->thing.member);
+function(ptr->thing.member->table);
+function(&ptr->thing.member->table);
+```
+
+[mailing list answer](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2006182155260.2367@hadrien/)
+
+## Include/exclude specific names in matches
+
+To include or exclude specific names in matches, the `==`
+and `!=` constraints can be added, similar to the [regex
+constraint](#use-regular-expressions-to-quickly-match-identifiers):
+
+```
+identifier FUNC != {func1,func2};
+```
+
+[mailing list answer](https://lore.kernel.org/cocci/alpine.DEB.2.21.1901170748520.2625@hadrien/)
