@@ -142,6 +142,8 @@ In a pinch, the list of files can be manually collected and fed to the
 git grep 'something_to_match' | cut -d: -f1 | sort -u | xargs cocci RULES.cocci
 ```
 
+[ref](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2209272304030.2842@hadrien/)
+
 ## Rewrite a matched element
 
 If you need to rewrite a matched string (or do any kind of variable
@@ -246,7 +248,7 @@ expression E;
 ?	VAR = ANYTHING;
 ```
 
-[mailing list answer](https://lore.kernel.org/cocci/b5a57410-f140-dc8c-c9b7-97f033f59cc7@web.de/T/#mad93275d80d2ec6c9eb8505592173ca563f167c7)
+[ref](https://lore.kernel.org/cocci/b5a57410-f140-dc8c-c9b7-97f033f59cc7@web.de/T/#mad93275d80d2ec6c9eb8505592173ca563f167c7)
 
 ## Match variables of a given type
 
@@ -266,8 +268,8 @@ u16 v;
 
 To match only local variables, use `local idexpression u16 v` instead of `u16 v`.
 
-[mailing list answer](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2109170825510.33288@hadrien/)
-[mailing list answer](https://lore.kernel.org/cocci/CAHmME9qj3ePZwnJnaZEy2Ds2J4d40a8P5DZxjtc=sS8=Jep6-w@mail.gmail.com/T/#mc2853837da2477850d19f8a75c93d948d64d9c52)
+[ref](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2109170825510.33288@hadrien/)
+[ref](https://lore.kernel.org/cocci/CAHmME9qj3ePZwnJnaZEy2Ds2J4d40a8P5DZxjtc=sS8=Jep6-w@mail.gmail.com/T/#mc2853837da2477850d19f8a75c93d948d64d9c52)
 
 ## Match an arbitrary length identifier across dereferences
 
@@ -303,7 +305,7 @@ function(ptr->thing.member->table);
 function(&ptr->thing.member->table);
 ```
 
-[mailing list answer](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2006182155260.2367@hadrien/)
+[ref](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2006182155260.2367@hadrien/)
 
 ## Include/exclude specific names in matches
 
@@ -315,4 +317,4 @@ constraint](#use-regular-expressions-to-quickly-match-identifiers):
 identifier FUNC != {func1,func2};
 ```
 
-[mailing list answer](https://lore.kernel.org/cocci/alpine.DEB.2.21.1901170748520.2625@hadrien/)
+[ref](https://lore.kernel.org/cocci/alpine.DEB.2.21.1901170748520.2625@hadrien/)
