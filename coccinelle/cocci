@@ -1,0 +1,54 @@
+#!/bin/bash
+
+if [ -z "$1" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+	echo "Usage: $0 RULES.cocci [SOURCE FILES ...]" >&2
+	echo "" >&2
+	echo "If SOURCE FILES is not specified, Coccinelle will run recursively." >&2
+	exit 1
+fi
+
+if [ ! -r arch/x86/Kconfig ]; then
+	echo "Please run from the root directory of the Linux kernel source." >&2
+	exit 1
+fi
+
+# Arguments are Linux Makefile-specific, so this attempts to extract
+# the desired arguments from the execution error message.
+ARGS=$(make coccicheck V=1 MODE=patch COCCI=/dev/null 2>&1 | \
+        grep ^Running | \
+        awk -F"/spatch " '{print $2}' | \
+        sed     \
+                -e 's/-D patch //' \
+                -e 's/--dir \. //' \
+                -e 's/--cocci-file \/dev\/null //' \
+        )
+
+# Stuff we've had to remove from time to time...
+#                -e 's/--jobs [0-9]*//' \
+#                -e 's/--chunksize [0-9]*//' \
+#                -e 's/--very-quiet //' \
+
+# If we're running a .cocci file from scripts/coccinelle, it may expect to
+# have the "-D patch" argument.
+if grep -qm1 'depends on patch' "$1" ; then
+	ARGS="$ARGS -D patch"
+fi
+
+# What kind of processing to do on header files:
+if ! grep -qm1 '// Options:' "$1" ; then
+	echo "No '// Options:' line found. Using default header search." >&2
+	ARGS="$ARGS --no-includes --include-headers"
+
+	# When doing specialized struct analysis, you'll want to use this,
+	# but it can be very slow:
+	# // Options: --recursive-includes
+	#
+	# To process all headers in addition to the .c files:
+	# // Options: --all-includes
+fi
+
+if [ -z "$2" ] ; then
+	spatch $ARGS --cocci-file "$1" --dir .
+else
+	spatch $ARGS --cocci-file "$@"
+fi
