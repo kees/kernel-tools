@@ -276,16 +276,7 @@ for area in output:
 	for path in contains[area]:
 		print("\t%s" % path)
 	prefix = get_prefix(area, contains[area])
-	print("\t\tSubject: %s: %s" % (prefix, subject))
 
-	counter += 1
-	fname = "%s %s" % (prefix, subject)
-	fname = re.sub(r'[^a-zA-Z0-9]+', '-', fname)
-	fname = "%04d-%s.patch" % (counter, fname)
-	out = open(fname, "w")
-	print("From auto-maintainer-split", file=out)
-	print("From: %s" % (who), file=out)
-	print("Date: %s" % (date), file=out)
 	# Make sure this goes somewhere
 	if len(email[area]['maint']) == 0:
 		email[area]['maint'].append('linux-kernel@vger.kernel.org')
@@ -307,19 +298,31 @@ for area in output:
 	tos = overrides
 	tos.extend(x for x in email[area]['maint'] if x not in overrides)
 
-	# Perform proper "get_maintaers.pl" expansion...
+	# Perform proper "get_maintainer.pl" expansion...
 	ccs.extend(x for x in get_ccs(output[area], who) if x not in tos and x not in ccs)
 
-	# There are some unwritten rules about cross-subsystem CCs...
-	if 'linux-wireless@vger.kernel.org,' in ccs and \
-	   'netdev@vger.kernel.org' not in ccs:
-		ccs.append('netdev@vger.kernel.org')
+	# More unwritten rules for wireless...
+	if 'linux-wireless@vger.kernel.org,' in ccs:
+		if 'netdev@vger.kernel.org' not in ccs:
+			ccs.append('netdev@vger.kernel.org')
+		if not prefix.startswith('wifi: '):
+			prefix = "wifi: %s" % (prefix)
 
+	counter += 1
+	fname = "%s %s" % (prefix, subject)
+	fname = re.sub(r'[^a-zA-Z0-9]+', '-', fname)
+	fname = "%04d-%s.patch" % (counter, fname)
+	out = open(fname, "w")
+	print("\t\t%s" % fname)
+	print("From auto-maintainer-split", file=out)
+	print("From: %s" % (who), file=out)
+	print("Date: %s" % (date), file=out)
 	print("To: %s" % (", ".join(tos)), file=out)
 	print("Cc: %s" % (", ".join(ccs)), file=out)
 	if subject != '':
 		# Explicit subject
-		print("Subject: [PATCH] %s: %s" % (prefix, subject), file=out)
+		combined = "[PATCH] %s: %s" % (prefix, subject)
+		print("Subject: %s" % (combined), file=out)
 		print("", file=out)
 		print(text.strip(), file=out)
 	else:
@@ -328,6 +331,8 @@ for area in output:
 		if not combined.startswith('[PATCH] '):
 			combined = "[PATCH] %s: %s" % (prefix, combined)
 		print("Subject: %s" % (combined), file=out)
+
+	print("\t\t\tSubject: %s" % (combined))
 
 	print("", file=out)
 	# Emit any log lines
