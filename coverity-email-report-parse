@@ -57,6 +57,7 @@ def commit_from_line(file_name, code_line):
 	return output.split(' ', 1)[0]
 
 def parse_commit(commit):
+	print(f"Parsing commit {commit} ...")
 	proc = subprocess.Popen(['git', 'log', '-1', commit], stdout=subprocess.PIPE)
 	output = proc.stdout.read().decode("utf-8")
 	author = None
@@ -79,6 +80,18 @@ def parse_commit(commit):
 		match = re.search(r'^    .*-by:\s+(.*@.*)$', line)
 		if match:
 			others.add(match.group(1))
+		match = re.search(r'^    Cc:\s+(.*@.*)$', line)
+		if match:
+			others.add(match.group(1))
+
+	# Gather full list of people based on get_maintainers.pl too.
+	patch = subprocess.Popen(['git', 'show', commit], stdout=subprocess.PIPE)
+	output = subprocess.check_output(['./scripts/get_maintainer.pl',
+					  '--email',
+					  '--no-rolestats'], stdin=patch.stdout).decode('utf-8')
+	patch.wait()
+	for line in output.splitlines():
+		others.add(line.strip())
 
 	if author in others:
 		others.remove(author)
@@ -181,7 +194,7 @@ Coverity-bot
 	cc_args = []
 	for person in cc:
 		cc_args += ['-c', person]
-	cmd = ['mutt'] + cc_args + ['-H', template.name, '-b', me, '-s', subject, '-e', 'unset signature'] + list(to)
+	cmd = ['mutt-batch'] + cc_args + ['-H', template.name, '-b', me, '-s', subject, '-e', 'unset signature'] + list(to)
 
 	print("To: %s" % (",\n\t".join(to)))
 	if len(cc) > 0:
@@ -246,12 +259,12 @@ for line in fd:
 	# Avoid MUAs hiding lines starting with ">" as if they were quotes.
 	if line.startswith('>>>'):
 		line = line.replace(">>>", "vvv", 1)
-	concat += line + "\n"
 
 	match = re.search(r'^\*\*\* CID (\d+):\s+(.*)$', line)
 	if match:
 		cid = match.group(1)
 		reason = match.group(2)
+		concat += line + "\n"
 		continue
 
 	match = re.search(r'^/(\S+):\s+(\d+)\s+in\s+(.*)$', line)
@@ -260,3 +273,7 @@ for line in fd:
 		file_offset = match.group(2)
 		function = match.group(3)
 		hits.append( (file_name, file_offset, function, cid, reason) )
+		concat += f"{file_name}:{file_offset} in {function}\n"
+		continue
+
+	concat += line + "\n"
