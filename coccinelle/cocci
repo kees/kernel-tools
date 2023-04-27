@@ -35,9 +35,10 @@ if grep -qm1 'depends on patch' "$1" ; then
 fi
 
 # What kind of processing to do on header files:
-if ! grep -qm1 '// Options:' "$1" ; then
+options=$(grep -m1 '// Options:' "$1" | cut -d: -f2-)
+if [ -z "$options" ]; then
 	echo "No '// Options:' line found. Using default header search." >&2
-	ARGS="$ARGS --no-includes --include-headers"
+	options="--no-includes --include-headers"
 
 	# When doing specialized struct analysis, you'll want to use this,
 	# but it can be very slow:
@@ -46,6 +47,7 @@ if ! grep -qm1 '// Options:' "$1" ; then
 	# To process all headers in addition to the .c files:
 	# // Options: --all-includes
 fi
+ARGS="$ARGS $options"
 
 if [ -z "$2" ] ; then
 	spatch $ARGS --cocci-file "$1" --dir .
