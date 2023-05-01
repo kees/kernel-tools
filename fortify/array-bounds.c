@@ -10,7 +10,7 @@
 
 volatile int unconst = 0; /* used to stop optimizer from seeing constant expressions. */
 
-#define report_size(p)      do {    \
+#define REPORT_SIZE(p)      do {    \
 	const size_t bdos = __builtin_dynamic_object_size(p, 1); \
     \
 	if (__builtin_constant_p(bdos)) { \
@@ -75,7 +75,7 @@ TEST_SIGNAL(fixed, SIGILL)
 	struct fixed f = { };
 	int index = MAX_INDEX + unconst;
 
-	report_size(f.array);
+	REPORT_SIZE(f.array);
 	EXPECT_EQ(__builtin_dynamic_object_size(f.array, 1), 16*4);
 	TEST_ACCESS(&f, index);
 }
@@ -87,7 +87,7 @@ TEST_SIGNAL(dynamic, SIGILL)
 	/* malloc() is marked with __attribute__((alloc_size(1))) */
 	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
 
-	report_size(p->array);
+	REPORT_SIZE(p->array);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), count * sizeof(*p->array));
 	TEST_ACCESS(p, count);
 }
@@ -96,7 +96,7 @@ TEST_SIGNAL(dynamic, SIGILL)
 static void noinline ignore_alloc_size(struct __test_metadata *_metadata,
 				       struct annotated *p, int index)
 {
-	report_size(p->array);
+	REPORT_SIZE(p->array);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
 	TEST_ACCESS(p, index);
 }
