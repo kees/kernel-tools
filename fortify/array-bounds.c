@@ -70,17 +70,24 @@ struct annotated {
 	TH_LOG("this should have been unreachable");	\
 } while (0)
 
-TEST_SIGNAL(fixed, SIGILL)
+TEST(fixed_bdos)
+{
+	struct fixed f = { };
+
+	REPORT_SIZE(f.array);
+	EXPECT_EQ(__builtin_dynamic_object_size(f.array, 1), 16*4);
+}
+
+TEST_SIGNAL(fixed_sanitizer, SIGILL)
 {
 	struct fixed f = { };
 	int index = MAX_INDEX + unconst;
 
 	REPORT_SIZE(f.array);
-	EXPECT_EQ(__builtin_dynamic_object_size(f.array, 1), 16*4);
 	TEST_ACCESS(&f, index);
 }
 
-TEST_SIGNAL(dynamic, SIGILL)
+TEST(dynamic_bdos)
 {
 	int count = MAX_INDEX + unconst;
 
@@ -89,26 +96,50 @@ TEST_SIGNAL(dynamic, SIGILL)
 
 	REPORT_SIZE(p->array);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), count * sizeof(*p->array));
+}
+
+TEST_SIGNAL(dynamic_sanitizer, SIGILL)
+{
+	int count = MAX_INDEX + unconst;
+
+	/* malloc() is marked with __attribute__((alloc_size(1))) */
+	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
+
+	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, count);
 }
 
 /* Hide the allocation size by using a leaf function. */
-static void noinline ignore_alloc_size(struct __test_metadata *_metadata,
-				       struct annotated *p, int index)
+static struct annotated * noinline alloc_annotated(int index)
 {
-	REPORT_SIZE(p->array);
-	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
-	TEST_ACCESS(p, index);
+	struct annotated *p;
+
+	p = malloc(sizeof(*p) + index * sizeof(*p->array));
+	p->foo = index;
+
+	return p;
 }
 
-TEST_SIGNAL(element_count, SIGILL)
+TEST(element_count_bdos)
 {
 	struct annotated *p;
 	int index = MAX_INDEX + unconst;
 
-	p = malloc(sizeof(*p) + MAX_INDEX * sizeof(*p->array));
-	p->foo = MAX_INDEX;
-	ignore_alloc_size(_metadata, p, index);
+	p = alloc_annotated(index);
+
+	REPORT_SIZE(p->array);
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
+}
+
+TEST_SIGNAL(element_count_sanitizer, SIGILL)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+
+	p = alloc_annotated(index);
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, index);
 }
 
 TEST_HARNESS_MAIN
