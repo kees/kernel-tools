@@ -28,9 +28,9 @@ volatile int unconst = 0; /* used to stop optimizer from seeing constant express
 } while (0)
 
 #if __has_attribute(__element_count__)
-# define __counted_by(member)	__attribute__((__element_count__(member)))
+# define __counted_by(member)	__attribute__((__element_count__(#member)))
 #else
-# define __counted_by(member)	/* __attribute__((__element_count__(member))) */
+# define __counted_by(member)	/* __attribute__((__element_count__(#member))) */
 #endif
 
 #define MAX_INDEX	16
