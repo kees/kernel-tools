@@ -91,6 +91,7 @@ TEST(fixed_size_seen_by_bdos)
 	struct fixed f = { };
 
 	REPORT_SIZE(f.array);
+	EXPECT_EQ(sizeof(f) - sizeof(f.array), offsetof(typeof(f), array));
 	EXPECT_EQ(__builtin_object_size(f.array, 1), sizeof(f.array));
 	EXPECT_EQ(__builtin_dynamic_object_size(f.array, 1), sizeof(f.array));
 }
@@ -112,6 +113,7 @@ TEST(alloc_size_seen_by_bdos)
 	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
 
 	REPORT_SIZE(p->array);
+	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), count * sizeof(*p->array));
 }
@@ -147,6 +149,7 @@ TEST(unknown_size_unknown_to_bdos)
 	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
 
 	REPORT_SIZE(p->array);
+	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), SIZE_MAX);
 }
@@ -170,6 +173,7 @@ TEST(element_count_seen_by_bdos)
 	p = alloc_annotated(index, SET_COUNT_MEMBER);
 
 	REPORT_SIZE(p->array);
+	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
 }
