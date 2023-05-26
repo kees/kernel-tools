@@ -34,6 +34,7 @@ volatile int unconst = 0; /* used to stop optimizer from seeing constant express
 #endif
 
 #define MAX_INDEX	16
+#define SIZE_BUMP	 2
 
 enum enforcement {
 	SHOULD_NOT_TRAP = 0,
@@ -203,6 +204,66 @@ TEST_SIGNAL(element_count_enforced_by_sanitizer, SIGILL)
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, index, SHOULD_TRAP);
+}
+
+TEST(alloc_size_with_smaller_element_count_seen_by_bdos)
+{
+	int count = MAX_INDEX + unconst;
+
+	/* malloc() is marked with __attribute__((alloc_size(1))) */
+	struct flex *p = malloc(sizeof(*p) + (count + SIZE_BUMP) * sizeof(*p->array));
+	p->foo = count;
+
+	REPORT_SIZE(p->array);
+	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
+	/* Check array size alone. */
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->foo * sizeof(*p->array));
+}
+
+TEST_SIGNAL(alloc_size_with_smaller_element_count_enforced_by_sanitizer, SIGILL)
+{
+	int count = MAX_INDEX + unconst;
+
+	/* malloc() is marked with __attribute__((alloc_size(1))) */
+	struct flex *p = malloc(sizeof(*p) + (count + SIZE_BUMP) * sizeof(*p->array));
+	p->foo = count;
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, count, SHOULD_TRAP);
+}
+
+TEST(alloc_size_with_bigger_element_count_seen_by_bdos)
+{
+	int count = MAX_INDEX + unconst;
+
+	/* malloc() is marked with __attribute__((alloc_size(1))) */
+	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
+	p->foo = count + SIZE_BUMP;
+
+	REPORT_SIZE(p->array);
+	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
+	/* Check array size alone. */
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), (p->foo - SIZE_BUMP) * sizeof(*p->array));
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->foo - SIZE_BUMP) * sizeof(*p->array));
+}
+
+TEST_SIGNAL(alloc_size_with_bigger_element_count_enforced_by_sanitizer, SIGILL)
+{
+	int count = MAX_INDEX + unconst;
+
+	/* malloc() is marked with __attribute__((alloc_size(1))) */
+	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
+	p->foo = count + SIZE_BUMP;
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, count, SHOULD_TRAP);
 }
 
 TEST_HARNESS_MAIN
