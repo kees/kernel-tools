@@ -92,8 +92,12 @@ TEST(fixed_size_seen_by_bdos)
 
 	REPORT_SIZE(f.array);
 	EXPECT_EQ(sizeof(f) - sizeof(f.array), offsetof(typeof(f), array));
+	/* Check array size alone. */
 	EXPECT_EQ(__builtin_object_size(f.array, 1), sizeof(f.array));
 	EXPECT_EQ(__builtin_dynamic_object_size(f.array, 1), sizeof(f.array));
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(&f, 1), sizeof(f));
+	EXPECT_EQ(__builtin_dynamic_object_size(&f, 1), sizeof(f));
 }
 
 TEST_SIGNAL(fixed_size_enforced_by_sanitizer, SIGILL)
@@ -114,8 +118,12 @@ TEST(alloc_size_seen_by_bdos)
 
 	REPORT_SIZE(p->array);
 	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
+	/* Check array size alone. */
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), count * sizeof(*p->array));
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + count * sizeof(*p->array));
 }
 
 TEST_SIGNAL(alloc_size_enforced_by_sanitizer, SIGILL)
@@ -150,8 +158,12 @@ TEST(unknown_size_unknown_to_bdos)
 
 	REPORT_SIZE(p->array);
 	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
+	/* Check array size alone. */
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), SIZE_MAX);
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), SIZE_MAX);
 }
 
 TEST(unknown_size_ignored_by_sanitizer)
@@ -174,8 +186,12 @@ TEST(element_count_seen_by_bdos)
 
 	REPORT_SIZE(p->array);
 	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
+	/* Check array size alone. */
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->foo * sizeof(*p->array));
 }
 
 TEST_SIGNAL(element_count_enforced_by_sanitizer, SIGILL)
