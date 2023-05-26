@@ -8,7 +8,8 @@
 
 #define noinline __attribute__((__noinline__))
 
-volatile int unconst = 0; /* used to stop optimizer from seeing constant expressions. */
+/* Used to stop optimizer from seeing constant expressions. */
+volatile int unconst = 0;
 
 #define REPORT_SIZE(p)      do {    \
 	const size_t bdos = __builtin_dynamic_object_size(p, 1); \
@@ -64,6 +65,10 @@ struct annotated {
 	int array[] __counted_by(foo);
 };
 
+/*
+ * Test safe accesses at index 0 and index-1, then optionally check
+ * what happens when accessing "index".
+ */
 #define TEST_ACCESS(p, index, enforcement)	do {		\
 								\
 	/* Index zero is in the array. */			\
@@ -87,6 +92,24 @@ struct annotated {
 	}							\
 } while (0)
 
+/* Helper to hide the allocation size by using a leaf function. */
+static struct annotated * noinline alloc_annotated(int index, enum set_count action)
+{
+	struct annotated *p;
+
+	p = malloc(sizeof(*p) + index * sizeof(*p->array));
+	if (action == SET_COUNT_MEMBER)
+		p->foo = index;
+
+	return p;
+}
+
+/*
+ * For a structure ending with a fixed-size array, sizeof(*p) should
+ * match __builtin_object_size(p, 1), which should also match
+ * __builtin_dynamic_object_size(p, 1). This should work for both the
+ * array itself and the object as a whole.
+ */
 TEST(fixed_size_seen_by_bdos)
 {
 	struct fixed f = { };
@@ -101,6 +124,10 @@ TEST(fixed_size_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(&f, 1), sizeof(f));
 }
 
+/*
+ * For a fixed-size array, the sanitizer should trap when accessing
+ * beyond the largest index.
+ */
 TEST_SIGNAL(fixed_size_enforced_by_sanitizer, SIGILL)
 {
 	struct fixed f = { };
@@ -110,6 +137,56 @@ TEST_SIGNAL(fixed_size_enforced_by_sanitizer, SIGILL)
 	TEST_ACCESS(&f, index, SHOULD_TRAP);
 }
 
+/*
+ * For a structure ending with a flexible array, sizeof(*p) should
+ * match the offset of the flexible array. Since the size of the
+ * array is unknown, both __builtin_object_size(p, 1) and
+ * __builtin_dynamic_object_size(p, 1) should report SIZE_MAX. This
+ * should be true for both the array itself and the object as a whole.
+ */
+TEST(unknown_size_unknown_to_bdos)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+
+	/* Hide actual allocation size from compiler. */
+	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
+
+	REPORT_SIZE(p->array);
+	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
+	/* Check array size alone. */
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), SIZE_MAX);
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), SIZE_MAX);
+}
+
+/*
+ * For a structure ending with a flexible array, the sanitizer has
+ * no information about max indexes and should not trap for any
+ * accesses.
+ */
+TEST(unknown_size_ignored_by_sanitizer)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+
+	/* Hide actual allocation size from compiler. */
+	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, index, SHOULD_NOT_TRAP);
+}
+
+/*
+ * For a structure ending with a flexible array where the allocation
+ * is visible (via the __alloc_size attribute), this size should be
+ * visible to __builtin_dynamic_object_size(p, 1) for both the array
+ * itself and the object as a whole. The result of sizeof() and
+ * __builtin_object_size() should remain unchanged compared to the
+ * "unknown" cases above.
+ */
 TEST(alloc_size_seen_by_bdos)
 {
 	int count = MAX_INDEX + unconst;
@@ -127,6 +204,12 @@ TEST(alloc_size_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + count * sizeof(*p->array));
 }
 
+/*
+ * For a structure ending with a flexible array where the allocation
+ * is visible (via the __alloc_size attribute), the sanitizer should
+ * trap when accessing beyond the highest index still contained by the
+ * allocation.
+ */
 TEST_SIGNAL(alloc_size_enforced_by_sanitizer, SIGILL)
 {
 	int count = MAX_INDEX + unconst;
@@ -138,46 +221,15 @@ TEST_SIGNAL(alloc_size_enforced_by_sanitizer, SIGILL)
 	TEST_ACCESS(p, count, SHOULD_TRAP);
 }
 
-/* Hide the allocation size by using a leaf function. */
-static struct annotated * noinline alloc_annotated(int index, enum set_count action)
-{
-	struct annotated *p;
-
-	p = malloc(sizeof(*p) + index * sizeof(*p->array));
-	if (action == SET_COUNT_MEMBER)
-		p->foo = index;
-
-	return p;
-}
-
-TEST(unknown_size_unknown_to_bdos)
-{
-	struct annotated *p;
-	int index = MAX_INDEX + unconst;
-
-	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
-
-	REPORT_SIZE(p->array);
-	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
-	/* Check array size alone. */
-	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), SIZE_MAX);
-	/* Check check entire object size. */
-	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), SIZE_MAX);
-}
-
-TEST(unknown_size_ignored_by_sanitizer)
-{
-	struct annotated *p;
-	int index = MAX_INDEX + unconst;
-
-	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
-
-	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, index, SHOULD_NOT_TRAP);
-}
-
+/*
+ * For a structure ending with a flexible array where the allocation
+ * is hidden, but the array size member (identified with the
+ * __element_count attribute) has been set, the calculated size should
+ * be visible to __builtin_dynamic_object_size(p, 1) for both the array
+ * itself and the object as a whole. The result of sizeof() and
+ * __builtin_object_size() should remain unchanged compared to the
+ * "unknown" cases above.
+ */
 TEST(element_count_seen_by_bdos)
 {
 	struct annotated *p;
@@ -195,6 +247,12 @@ TEST(element_count_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->foo * sizeof(*p->array));
 }
 
+/*
+ * For a structure ending with a flexible array where the allocation
+ * is hidden, but the array size member (identified with the
+ * __element_count attribute) has been set, the sanitizer should trap
+ * when accessing beyond the index stored in the element_count member.
+ */
 TEST_SIGNAL(element_count_enforced_by_sanitizer, SIGILL)
 {
 	struct annotated *p;
@@ -206,6 +264,13 @@ TEST_SIGNAL(element_count_enforced_by_sanitizer, SIGILL)
 	TEST_ACCESS(p, index, SHOULD_TRAP);
 }
 
+/*
+ * When both __alloc_size and __element_count are available to calculate
+ * sizes, the smaller of the two should take precedence. Check that when
+ * the visible allocation is larger than the size calculated from the
+ * element_count member's value, __builtin_dynamic_object_size(p, 1) sees
+ * the smaller of the two (the allocation), with everything else unchanged.
+ */
 TEST(alloc_size_with_smaller_element_count_seen_by_bdos)
 {
 	int count = MAX_INDEX + unconst;
@@ -224,6 +289,13 @@ TEST(alloc_size_with_smaller_element_count_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->foo * sizeof(*p->array));
 }
 
+/*
+ * When both __alloc_size and __element_count are available to calculate
+ * sizes, the smaller of the two should take precedence. Check that when
+ * the visible allocation is larger than the size calculated from the
+ * element_count member's value, the sanitizer should trap when accessing
+ * beyond the index stored in the element_count member.
+ */
 TEST_SIGNAL(alloc_size_with_smaller_element_count_enforced_by_sanitizer, SIGILL)
 {
 	int count = MAX_INDEX + unconst;
@@ -236,6 +308,14 @@ TEST_SIGNAL(alloc_size_with_smaller_element_count_enforced_by_sanitizer, SIGILL)
 	TEST_ACCESS(p, count, SHOULD_TRAP);
 }
 
+/*
+ * When both __alloc_size and __element_count are available to calculate
+ * sizes, the smaller of the two should take precedence. Check that when
+ * the visible allocation that is smaller than the size calculated from
+ * the element_count member's value, __builtin_dynamic_object_size(p, 1)
+ * sees the smaller of the two (the element_count member size calculation),
+ * with everything else unchanged.
+ */
 TEST(alloc_size_with_bigger_element_count_seen_by_bdos)
 {
 	int count = MAX_INDEX + unconst;
@@ -254,6 +334,13 @@ TEST(alloc_size_with_bigger_element_count_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->foo - SIZE_BUMP) * sizeof(*p->array));
 }
 
+/*
+ * When both __alloc_size and __element_count are available to calculate
+ * sizes, the smaller of the two should take precedence. Check that when
+ * the visible allocation is smaller than the size calculated from the
+ * element_count member's value, the sanitizer should trap when accessing
+ * beyond the highest index still contained by the allocation.
+ */
 TEST_SIGNAL(alloc_size_with_bigger_element_count_enforced_by_sanitizer, SIGILL)
 {
 	int count = MAX_INDEX + unconst;
