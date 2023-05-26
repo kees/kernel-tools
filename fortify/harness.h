@@ -110,7 +110,7 @@
 
 /* Unconditional logger for internal use. */
 #define __TH_LOG(fmt, ...) \
-		fprintf(TH_LOG_STREAM, "# %s:%d:%s:" fmt "\n", \
+		fprintf(TH_LOG_STREAM, "#\t\t\t%s:%d:%s:" fmt "\n", \
 			__FILE__, __LINE__, _metadata->name, ##__VA_ARGS__)
 
 /**

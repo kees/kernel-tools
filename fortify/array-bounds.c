@@ -35,6 +35,16 @@ volatile int unconst = 0; /* used to stop optimizer from seeing constant express
 
 #define MAX_INDEX	16
 
+enum enforcement {
+	SHOULD_NOT_TRAP = 0,
+	SHOULD_TRAP,
+};
+
+enum set_count {
+	SKIP_COUNT_MEMBER = 0,
+	SET_COUNT_MEMBER,
+};
+
 struct fixed {
 	unsigned long flags;
 	size_t foo;
@@ -53,41 +63,48 @@ struct annotated {
 	int array[] __counted_by(foo);
 };
 
-#define TEST_ACCESS(p, index)	do {			\
-							\
-	/* Index zero is in the array. */		\
-	TH_LOG("safe: array[0] = 0xFF");		\
-	(p)->array[0] = 0xFF;				\
-	ASSERT_EQ((p)->array[0], 0xFF);			\
-	TH_LOG("safe: array[%d] = 0xFF", index - 1);	\
-	(p)->array[index - 1] = 0xFF;			\
-	ASSERT_EQ((p)->array[index - 1], 0xFF);		\
-							\
-	/* "index" is expected to trap. */		\
-	TH_LOG("trap: array[%d] = 0xFF", index);	\
-	(p)->array[index] = 0xFF;			\
-	/* Don't assert here. */			\
-	TH_LOG("this should have been unreachable");	\
+#define TEST_ACCESS(p, index, enforcement)	do {		\
+								\
+	/* Index zero is in the array. */			\
+	TH_LOG("safe: array[0] = 0xFF");			\
+	(p)->array[0] = 0xFF;					\
+	ASSERT_EQ((p)->array[0], 0xFF);				\
+	TH_LOG("safe: array[%d] = 0xFF", index - 1);		\
+	(p)->array[index - 1] = 0xFF;				\
+	ASSERT_EQ((p)->array[index - 1], 0xFF);			\
+								\
+	if (enforcement == SHOULD_TRAP) {			\
+		/* "index" is expected to trap. */		\
+		TH_LOG("traps: array[%d] = 0xFF", index);	\
+	} else {						\
+		TH_LOG("ignored: array[%d] = 0xFF", index);	\
+	}							\
+	(p)->array[index] = 0xFF;				\
+	if (enforcement == SHOULD_TRAP) {			\
+		/* Don't assert: test for lack of signal. */	\
+		TH_LOG("this should have been unreachable");	\
+	}							\
 } while (0)
 
-TEST(fixed_bdos)
+TEST(fixed_size_seen_by_bdos)
 {
 	struct fixed f = { };
 
 	REPORT_SIZE(f.array);
-	EXPECT_EQ(__builtin_dynamic_object_size(f.array, 1), 16*4);
+	EXPECT_EQ(__builtin_object_size(f.array, 1), sizeof(f.array));
+	EXPECT_EQ(__builtin_dynamic_object_size(f.array, 1), sizeof(f.array));
 }
 
-TEST_SIGNAL(fixed_sanitizer, SIGILL)
+TEST_SIGNAL(fixed_size_enforced_by_sanitizer, SIGILL)
 {
 	struct fixed f = { };
 	int index = MAX_INDEX + unconst;
 
 	REPORT_SIZE(f.array);
-	TEST_ACCESS(&f, index);
+	TEST_ACCESS(&f, index, SHOULD_TRAP);
 }
 
-TEST(dynamic_bdos)
+TEST(alloc_size_seen_by_bdos)
 {
 	int count = MAX_INDEX + unconst;
 
@@ -95,10 +112,11 @@ TEST(dynamic_bdos)
 	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
 
 	REPORT_SIZE(p->array);
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), count * sizeof(*p->array));
 }
 
-TEST_SIGNAL(dynamic_sanitizer, SIGILL)
+TEST_SIGNAL(alloc_size_enforced_by_sanitizer, SIGILL)
 {
 	int count = MAX_INDEX + unconst;
 
@@ -106,40 +124,65 @@ TEST_SIGNAL(dynamic_sanitizer, SIGILL)
 	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, count);
+	TEST_ACCESS(p, count, SHOULD_TRAP);
 }
 
 /* Hide the allocation size by using a leaf function. */
-static struct annotated * noinline alloc_annotated(int index)
+static struct annotated * noinline alloc_annotated(int index, enum set_count action)
 {
 	struct annotated *p;
 
 	p = malloc(sizeof(*p) + index * sizeof(*p->array));
-	p->foo = index;
+	if (action == SET_COUNT_MEMBER)
+		p->foo = index;
 
 	return p;
 }
 
-TEST(element_count_bdos)
+TEST(unknown_size_unknown_to_bdos)
 {
 	struct annotated *p;
 	int index = MAX_INDEX + unconst;
 
-	p = alloc_annotated(index);
+	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
 
 	REPORT_SIZE(p->array);
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), SIZE_MAX);
+}
+
+TEST(unknown_size_ignored_by_sanitizer)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+
+	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, index, SHOULD_NOT_TRAP);
+}
+
+TEST(element_count_seen_by_bdos)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+
+	p = alloc_annotated(index, SET_COUNT_MEMBER);
+
+	REPORT_SIZE(p->array);
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
 }
 
-TEST_SIGNAL(element_count_sanitizer, SIGILL)
+TEST_SIGNAL(element_count_enforced_by_sanitizer, SIGILL)
 {
 	struct annotated *p;
 	int index = MAX_INDEX + unconst;
 
-	p = alloc_annotated(index);
+	p = alloc_annotated(index, SET_COUNT_MEMBER);
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, index);
+	TEST_ACCESS(p, index, SHOULD_TRAP);
 }
 
 TEST_HARNESS_MAIN
