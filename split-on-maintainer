@@ -172,6 +172,9 @@ for line in open('MAINTAINERS'):
 	elif mark in ['K']:
 		patterns[area]['content'].append(rest)
 	elif mark in ['S']:
+		if '(' in rest:
+			rest, note = rest.split('(', 1)
+			rest = rest.strip()
 		if rest in ['Supported', 'Maintained', 'Odd Fixes', 'Odd fixes', 'Buried alive in reporters']:
 			continue
 		elif rest in ['Orphan', 'Obsolete', 'Orphan / Obsolete']:
