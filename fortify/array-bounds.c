@@ -93,6 +93,14 @@ struct annotated {
 } while (0)
 
 /* Helper to hide the allocation size by using a leaf function. */
+static struct flex * noinline alloc_flex(int index)
+{
+	struct flex *f;
+
+	return malloc(sizeof(*f) + index * sizeof(*f->array));
+}
+
+/* Helper to hide the allocation size by using a leaf function. */
 static struct annotated * noinline alloc_annotated(int index, enum set_count action)
 {
 	struct annotated *p;
@@ -146,11 +154,11 @@ TEST_SIGNAL(fixed_size_enforced_by_sanitizer, SIGILL)
  */
 TEST(unknown_size_unknown_to_bdos)
 {
-	struct annotated *p;
+	struct flex *p;
 	int index = MAX_INDEX + unconst;
 
 	/* Hide actual allocation size from compiler. */
-	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
+	p = alloc_flex(index);
 
 	REPORT_SIZE(p->array);
 	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
@@ -169,11 +177,11 @@ TEST(unknown_size_unknown_to_bdos)
  */
 TEST(unknown_size_ignored_by_sanitizer)
 {
-	struct annotated *p;
+	struct flex *p;
 	int index = MAX_INDEX + unconst;
 
 	/* Hide actual allocation size from compiler. */
-	p = alloc_annotated(index, SKIP_COUNT_MEMBER);
+	p = alloc_flex(index);
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, index, SHOULD_NOT_TRAP);
