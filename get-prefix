@@ -34,6 +34,8 @@ def get_prefixes(area, paths):
 			if not title.startswith(':'):
 				prefix += ': '
 			title = prefix.lower() + title
+		if title.startswith('Revert "'):
+			continue
 		if ':' in title:
 			prefix = title.rpartition(':')[0]
 			# Ignore useless prefixes.
