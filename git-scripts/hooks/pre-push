@@ -54,8 +54,8 @@ do
 done
 
 # TODO: add back the lost sanity-checks inspired by sfr's:
-# - find the common base branch point
-# - check for S-o-b's
+# - find the common base branch point, based on unpushed base or a Linus rc, etc
+# helpers/check_commits ${BASE}..HEAD
 
 # Refresh TOTP, if needed.
 if ! ssh git@gitolite.kernel.org 2fa isval >/dev/null; then
