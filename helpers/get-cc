@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+if [ -z "$1" ] ; then
+	PATCH=$(mktemp -t get-cc-XXXXXX)
+	cat > "$PATCH"
+else
+	PATCH="$1"
+fi
+
+MYSELF=$(git config user.name)
+./scripts/get_maintainer.pl \
+	--email \
+	--git-min-percent 15 \
+	--git-since '3-years-ago' \
+	--no-rolestats \
+	"$PATCH" | grep -vE '^(linux-kernel@vger|'"$MYSELF"')'
+
+# Clean up
+if [ -z "$1" ] ; then
+	rm -f "$PATCH"
+fi

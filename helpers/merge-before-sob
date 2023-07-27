@@ -1,0 +1,18 @@
+#!/bin/bash
+# Can this script be replaced with 'git interpret-trailers'?
+set -e
+
+PATCH="$1"
+shift
+
+MYSELF=$(git config user.name)
+LINE=$(grep -m1 -n "^Signed-off-by: $MYSELF" "$PATCH" | cut -d: -f1)
+LINE=$(( LINE - 1 ))
+TOP=$(mktemp -t merge-before-sob.top-XXXXXX)
+BOTTOM=$(mktemp -t merge-before-sob.bottom-XXXXXX)
+
+(head -$LINE > $TOP; cat > $BOTTOM) < "$PATCH"
+cp "$PATCH" "$PATCH".old
+cat $TOP "$@" $BOTTOM > "$PATCH"
+
+rm -f $TOP $BOTTOM

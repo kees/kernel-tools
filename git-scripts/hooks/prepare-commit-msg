@@ -1,47 +1,28 @@
 #!/bin/sh
 #
-# An example hook script to prepare the commit log message.
-# Called by "git commit" with the name of the file that has the
-# commit message, followed by the description of the commit
-# message's source.  The hook's purpose is to edit the commit
-# message file.  If the hook fails with a non-zero status,
-# the commit is aborted.
-#
-# To enable this hook, rename this file to "prepare-commit-msg".
-
-# This hook includes three examples. The first one removes the
-# "# Please enter the commit message..." help message.
-#
-# The second includes the output of "git diff --name-status -r"
-# into the message, just before the "git status" output.  It is
-# commented because it doesn't cope with --amend or with squashed
-# commits.
-#
-# The third example adds a Signed-off-by line to the message, that can
-# still be edited.  This is rarely a good idea.
+# TODO: fix helper paths
 
 COMMIT_MSG_FILE=$1
 COMMIT_SOURCE=$2
 SHA1=$3
+BRANCH=$(git branch --show-current)
 
-#echo "COMMIT_MSG_FILE=$COMMIT_MSG_FILE" >&2
-#echo "COMMIT_SOURCE=$COMMIT_SOURCE" >&2
-#echo "SHA1=$SHA1" >&2
+echo "#" >>"$COMMIT_MSG_FILE"
 
-# Dump diff into a file:
-PATCH=$(mktemp -t prepare-commit-msg-patch-XXXXXX)
-git diff --staged > "$PATCH"
+case "$COMMIT_SOURCE,$SHA1" in
+ ,)
+	# This is a new commit. (Only get fancy when not doing rebases, etc.)
 
-# Include diff in comments for easier review.
-awk '{print "# " $0}' <"$PATCH" >>"$COMMIT_MSG_FILE"
+	# Dump diff into a file:
+	PATCH=$(mktemp -t prepare-commit-msg-patch-XXXXXX)
+	git diff --staged > "$PATCH"
 
-# Only get fancy when not doing rebases, etc.
-if [ -z "$COMMIT_SOURCE" ]; then
-	# This is a new commit.
+	# Include diff in comments for easier review.
+	awk '{print "# " $0}' <"$PATCH" >>"$COMMIT_MSG_FILE"
 
 	# Get CC list.
 	echo "Getting CC list ..." >&2
-	~/bin/cc-merge "$PATCH" "$COMMIT_MSG_FILE"
+	~/bin/merge-cc "$PATCH" "$COMMIT_MSG_FILE"
 
 	# Generate best-guess on prefixes...
 	echo "Getting Subject prefixes ..." >&2
@@ -49,24 +30,34 @@ if [ -z "$COMMIT_SOURCE" ]; then
 	~/bin/get-prefix unknown $(diffstat -p1 -l < "$PATCH") >"$PREFIX_FILE"
 	cat "$COMMIT_MSG_FILE" >>"$PREFIX_FILE"
 	mv "$PREFIX_FILE" "$COMMIT_MSG_FILE"
+
+	# Clean up
+	rm -rf "$PATCH"
+	;;
+ merge,)
+	# From https://superuser.com/questions/923676/figure-out-merged-commit-in-prepare-commit-msg-hook
+	#
+	# Retrieve merged branch name from an env var GITHEAD_<sha>=<branchName>
+	# We cannot use a sym ref of MERGE_HEAD, as it doesn't yet exist
+	gitHead=$(env | grep GITHEAD) # e.g. GITHEAD_<sha>=release/1.43
+	# cut out everything up to the last "=" symbol
+	MERGING="${gitHead##*=}"
+
+	# Include the short log for reivew (like with a pull-request)
+	git shortlog "$BRANCH".."$MERGING" | awk '{print "# " $0}' | sed -e 's/^# $/#/;' >>"$COMMIT_MSG_FILE"
+	;;
+ *)
+	# Nothing to do
+	;;
+esac
+
+# Quick sanity check about which branch we're working on.
+echo "# BRANCH=$BRANCH" >>"$COMMIT_MSG_FILE"
+# This doesn't need repeating: we're already editing the file.
+#echo "# COMMIT_MSG_FILE=$COMMIT_MSG_FILE" >>"$COMMIT_MSG_FILE"
+# Show source, for easier hook debugging.
+echo "# COMMIT_SOURCE=$COMMIT_SOURCE" >>"$COMMIT_MSG_FILE"
+# Include sha if available.
+if [ -n "$SHA1" ]; then
+	echo "# SHA1=$SHA1" >>"$COMMIT_MSG_FILE"
 fi
-
-# Clean up
-rm -rf "$PATCH"
-
-#/usr/bin/perl -i.bak -ne 'print unless(m/^. Please enter the commit message/..m/^#$/)' "$COMMIT_MSG_FILE"
-
-# case "$COMMIT_SOURCE,$SHA1" in
-#  ,|template,)
-#    /usr/bin/perl -i.bak -pe '
-#       print "\n" . `git diff --cached --name-status -r`
-# 	 if /^#/ && $first++ == 0' "$COMMIT_MSG_FILE" ;;
-#  *) ;;
-# esac
-
-# SOB=$(git var GIT_COMMITTER_IDENT | sed -n 's/^\(.*>\).*$/Signed-off-by: \1/p')
-# git interpret-trailers --in-place --trailer "$SOB" "$COMMIT_MSG_FILE"
-# if test -z "$COMMIT_SOURCE"
-# then
-#   /usr/bin/perl -i.bak -pe 'print "\n" if !$first_line++' "$COMMIT_MSG_FILE"
-# fi

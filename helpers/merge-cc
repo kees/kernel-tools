@@ -1,0 +1,19 @@
+#!/bin/bash
+set -e
+PATCH="$1"
+COMMIT_MSG_FILE="$2"
+PRE=$(mktemp -t merge-cc-XXXXXX)
+CC=$(mktemp -t merge-cc-XXXXXX)
+
+if [ -z "$COMMIT_MSG_FILE" ]; then
+	COMMIT_MSG_FILE="$PATCH"
+fi
+
+get-cc "$PATCH" | awk '{print "Cc: " $0}' > $PRE
+cat $PRE
+awk '!seen[$0]++' <(cat "$COMMIT_MSG_FILE" "$PRE" | grep '^Cc:') >$CC
+grep -v '^Cc:' "$COMMIT_MSG_FILE" > "$PRE"
+merge-before-sob "$PRE" $CC
+mv "$PRE" "$COMMIT_MSG_FILE"
+
+rm -f $CC
