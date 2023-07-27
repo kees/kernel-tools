@@ -1,0 +1,144 @@
+#!/bin/bash
+# Usage: check_fixes ${BASE}..${PULL_BRANCH}
+#
+# Originally from sfr's linux-next scripts.
+
+shopt -s extglob
+
+if [ "$#" -lt 1 ]; then
+        printf 'Usage: %s <commit range>\n', "$0" 1>&2
+        exit 1
+fi
+
+commits=$(git rev-list --no-merges -i --grep='^[[:space:]]*Fixes:' "$@")
+if [ -z "$commits" ]; then
+        exit 0
+fi
+
+# This should be a git tree that contains *only* Linus' tree
+#Linus_tree="${HOME}/src/linux-build/master"
+
+split_re='^([Cc][Oo][Mm][Mm][Ii][Tt])?[[:space:]]*([[:xdigit:]]{5,})([[:space:]]*)(.*)$'
+nl=$'\n'
+tab=$'\t'
+
+# Strip the leading and training spaces from a string
+strip_spaces()
+{
+	local str="${1##*([[:space:]])}"
+	str="${str%%*([[:space:]])}"
+	echo "$str"
+}
+
+for c in $commits; do
+
+	printf -v commit_msg 'In commit\n\n  %s\n\n' \
+		"$(git log -1 --format='%h ("%s")' "$c")"
+
+	readarray -t fixes_lines < <(git log -1 --format='%B' "$c" |
+					grep -i '^[[:space:]]*Fixes:')
+	fixes_lines=( "${fixes_lines[@]##*([[:space:]])}" )
+	fixes_lines=( "${fixes_lines[@]%%*([[:space:]])}" )
+
+	for fline in "${fixes_lines[@]}"; do
+		f="${fline##[Ff][Ii][Xx][Ee][Ss]:*([[:space:]])}"
+		printf -v fixes_msg 'Fixes tag\n\n  %s\n\nhas these problem(s):\n\n' "$fline"
+		sha=
+		subject=
+		msg=
+		if [[ "$f" =~ $split_re ]]; then
+			first="${BASH_REMATCH[1]}"
+			sha="${BASH_REMATCH[2]}"
+			spaces="${BASH_REMATCH[3]}"
+			subject="${BASH_REMATCH[4]}"
+			if [ "$first" ]; then
+				msg="${msg:+${msg}${nl}}  - leading word '$first' unexpected"
+			fi
+			if [ -z "$subject" ]; then
+				msg="${msg:+${msg}${nl}}  - missing subject"
+			elif [ -z "$spaces" ]; then
+				msg="${msg:+${msg}${nl}}  - missing space between the SHA1 and the subject"
+			fi
+		else
+			printf '%s%s  - %s\n' "$commit_msg" "$fixes_msg" 'No SHA1 recognised'
+			commit_msg=''
+			continue
+		fi
+		if ! git rev-parse -q --verify "$sha" >/dev/null; then
+			printf '%s%s  - %s\n' "$commit_msg" "$fixes_msg" 'Target SHA1 does not exist'
+			commit_msg=''
+			continue
+		fi
+
+		if [ "${#sha}" -lt 12 ]; then
+			msg="${msg:+${msg}${nl}}  - SHA1 should be at least 12 digits long${nl}    Can be fixed by setting core.abbrev to 12 (or more) or (for git v2.11${nl}    or later) just making sure it is not set (or set to \"auto\")."
+		fi
+		# reduce the subject to the part between () if there
+		if [[ "$subject" =~ ^\((.*)\) ]]; then
+			subject="${BASH_REMATCH[1]}"
+		elif [[ "$subject" =~ ^\((.*) ]]; then
+			subject="${BASH_REMATCH[1]}"
+			msg="${msg:+${msg}${nl}}  - Subject has leading but no trailing parentheses"
+		fi
+
+		# strip matching quotes at the start and end of the subject
+		# the unicode characters in the classes are
+		# U+201C LEFT DOUBLE QUOTATION MARK
+		# U+201D RIGHT DOUBLE QUOTATION MARK
+		# U+2018 LEFT SINGLE QUOTATION MARK
+		# U+2019 RIGHT SINGLE QUOTATION MARK
+		re1=$'^[\"\u201C](.*)[\"\u201D]$'
+		re2=$'^[\'\u2018](.*)[\'\u2019]$'
+		re3=$'^[\"\'\u201C\u2018](.*)$'
+		if [[ "$subject" =~ $re1 ]]; then
+			subject="${BASH_REMATCH[1]}"
+		elif [[ "$subject" =~ $re2 ]]; then
+			subject="${BASH_REMATCH[1]}"
+		elif [[ "$subject" =~ $re3 ]]; then
+			subject="${BASH_REMATCH[1]}"
+			msg="${msg:+${msg}${nl}}  - Subject has leading but no trailing quotes"
+		fi
+
+		subject=$(strip_spaces "$subject")
+
+		target_subject=$(git log -1 --format='%s' "$sha")
+		target_subject=$(strip_spaces "$target_subject")
+
+		# match with ellipses
+		case "$subject" in
+		*...)	subject="${subject%...}"
+			target_subject="${target_subject:0:${#subject}}"
+			;;
+		...*)	subject="${subject#...}"
+			target_subject="${target_subject: -${#subject}}"
+			;;
+		*\ ...\ *)
+			s1="${subject% ... *}"
+			s2="${subject#* ... }"
+			subject="$s1 $s2"
+			t1="${target_subject:0:${#s1}}"
+			t2="${target_subject: -${#s2}}"
+			target_subject="$t1 $t2"
+			;;
+		esac
+		subject=$(strip_spaces "$subject")
+		target_subject=$(strip_spaces "$target_subject")
+
+		if [ "$subject" != "${target_subject:0:${#subject}}" ]; then
+			msg="${msg:+${msg}${nl}}  - Subject does not match target commit subject${nl}    Just use${nl}${tab}git log -1 --format='Fixes: %h (\"%s\")'"
+		fi
+#		lsha=$(cd "$Linus_tree" && git rev-parse -q --verify "$sha")
+#		if [ -z "$lsha" ]; then
+#			count=$(git rev-list --count "$sha".."$c")
+#			if [ "$count" -eq 0 ]; then
+#				msg="${msg:+${msg}${nl}}  - Target is not an ancestor of this commit"
+#			fi
+#		fi
+		if [ "$msg" ]; then
+			printf '%s%s%s\n' "$commit_msg" "$fixes_msg" "$msg"
+			commit_msg=''
+		fi
+	done
+done
+
+exit 0
