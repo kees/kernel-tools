@@ -1,0 +1,14 @@
+#!/bin/bash
+set -eu
+WAT="$1"
+
+cd ~/src
+here sh -c "mkdir -p built-compilers/llvm/$WAT && cd built-compilers/llvm/$WAT && \
+	../../../tc-build/build-llvm.py \
+		--quiet-cmake \
+		-b . \
+		--build-stage1-only \
+		--llvm-folder ../../../llvm-project \
+		--lto thin \
+		-n \
+	"

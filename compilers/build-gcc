@@ -1,0 +1,13 @@
+#!/bin/bash
+set -eu
+
+WAT="$1"
+
+cd ~/src
+here sh -c "mkdir -p built-compilers/gcc/$WAT && cd built-compilers/gcc/$WAT && \
+        ../../../gcc/configure \
+                --enable-shared --enable-threads=posix \
+                --enable-__cxa_atexit --enable-clocale=gnu \
+                --enable-languages=c,c++ \
+                --prefix=/srv/code/built-compilers/gcc/$WAT/installed" && \
+here sh -c "cd built-compilers/gcc/$WAT && make -j128 && make -j128 install"
