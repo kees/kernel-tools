@@ -5,13 +5,13 @@
 COMMIT_MSG_FILE=$1
 COMMIT_SOURCE=$2
 SHA1=$3
-BRANCH=$(git branch --show-current)
-
-echo "#" >>"$COMMIT_MSG_FILE"
 
 case "$COMMIT_SOURCE,$SHA1" in
  ,)
 	# This is a new commit. (Only get fancy when not doing rebases, etc.)
+
+	# Add separator for readability.
+	echo "#" >>"$COMMIT_MSG_FILE"
 
 	# Dump diff into a file:
 	PATCH=$(mktemp -t prepare-commit-msg-patch-XXXXXX)
@@ -34,7 +34,11 @@ case "$COMMIT_SOURCE,$SHA1" in
 	# Clean up
 	rm -rf "$PATCH"
 	;;
+
  merge,)
+	# Add separator for readability.
+	echo "#" >>"$COMMIT_MSG_FILE"
+
 	# From https://superuser.com/questions/923676/figure-out-merged-commit-in-prepare-commit-msg-hook
 	#
 	# Retrieve merged branch name from an env var GITHEAD_<sha>=<branchName>
@@ -42,17 +46,36 @@ case "$COMMIT_SOURCE,$SHA1" in
 	gitHead=$(env | grep GITHEAD) # e.g. GITHEAD_<sha>=release/1.43
 	# cut out everything up to the last "=" symbol
 	MERGING="${gitHead##*=}"
+	BRANCH=$(git branch --show-current)
 
 	# Include the short log for reivew (like with a pull-request)
 	git shortlog "$BRANCH".."$MERGING" | awk '{print "# " $0}' | sed -e 's/^# $/#/;' >>"$COMMIT_MSG_FILE"
 	;;
+
+ commit,*)
+	# We're likely amending an existing commit log.
+
+	# Dump commit into a file:
+	PATCH=$(mktemp -t prepare-commit-msg-patch-XXXXXX)
+	git diff $SHA1~ > "$PATCH"
+
+	# Add separator for readability.
+	echo "#" >>"$COMMIT_MSG_FILE"
+
+	# Include diff in comments for easier review.
+	awk '{print "# " $0}' <"$PATCH" >>"$COMMIT_MSG_FILE"
+
+	# Clean up
+	rm -rf "$PATCH"
+	;;
+
  *)
 	# Nothing to do
 	;;
 esac
 
-# Quick sanity check about which branch we're working on.
-echo "# BRANCH=$BRANCH" >>"$COMMIT_MSG_FILE"
+exit 0
+
 # This doesn't need repeating: we're already editing the file.
 #echo "# COMMIT_MSG_FILE=$COMMIT_MSG_FILE" >>"$COMMIT_MSG_FILE"
 # Show source, for easier hook debugging.
