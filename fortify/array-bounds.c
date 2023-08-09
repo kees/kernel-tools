@@ -44,20 +44,20 @@ enum enforcement {
 
 struct fixed {
 	unsigned long flags;
-	size_t foo;
+	size_t count;
 	int array[MAX_INDEX];
 };
 
 struct flex {
 	unsigned long flags;
-	size_t foo;
+	size_t count;
 	int array[];
 };
 
 struct annotated {
 	unsigned long flags;
-	size_t foo;
-	int array[] __counted_by(foo);
+	size_t count;
+	int array[] __counted_by(count);
 };
 
 /*
@@ -101,7 +101,7 @@ static struct annotated * noinline alloc_annotated(int index)
 	struct annotated *p;
 
 	p = malloc(sizeof(*p) + index * sizeof(*p->array));
-	p->foo = index;
+	p->count = index;
 
 	return p;
 }
@@ -240,13 +240,14 @@ TEST(counted_by_seen_by_bdos)
 	p = alloc_annotated(index);
 
 	REPORT_SIZE(p->array);
+
 	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
 	/* Check array size alone. */
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array));
 	/* Check check entire object size. */
 	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->foo * sizeof(*p->array));
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->count * sizeof(*p->array));
 }
 
 /*
@@ -278,17 +279,17 @@ TEST(alloc_size_with_smaller_counted_by_seen_by_bdos)
 	int count = MAX_INDEX + unconst;
 
 	/* malloc() is marked with __attribute__((alloc_size(1))) */
-	struct flex *p = malloc(sizeof(*p) + (count + SIZE_BUMP) * sizeof(*p->array));
-	p->foo = count;
+	struct annotated *p = malloc(sizeof(*p) + (count + SIZE_BUMP) * sizeof(*p->array));
+	p->count = count;
 
 	REPORT_SIZE(p->array);
 	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
 	/* Check array size alone. */
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->foo * sizeof(*p->array));
-	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array));
+	/* Check check entire object size: this is not limited by __counted_by. */
 	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->foo * sizeof(*p->array));
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count + SIZE_BUMP) * sizeof(*p->array));
 }
 
 /*
@@ -303,8 +304,8 @@ TEST_SIGNAL(alloc_size_with_smaller_counted_by_enforced_by_sanitizer, SIGILL)
 	int count = MAX_INDEX + unconst;
 
 	/* malloc() is marked with __attribute__((alloc_size(1))) */
-	struct flex *p = malloc(sizeof(*p) + (count + SIZE_BUMP) * sizeof(*p->array));
-	p->foo = count;
+	struct annotated *p = malloc(sizeof(*p) + (count + SIZE_BUMP) * sizeof(*p->array));
+	p->count = count;
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, count, SHOULD_TRAP);
@@ -323,17 +324,17 @@ TEST(alloc_size_with_bigger_counted_by_seen_by_bdos)
 	int count = MAX_INDEX + unconst;
 
 	/* malloc() is marked with __attribute__((alloc_size(1))) */
-	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
-	p->foo = count + SIZE_BUMP;
+	struct annotated *p = malloc(sizeof(*p) + count * sizeof(*p->array));
+	p->count = count + SIZE_BUMP;
 
 	REPORT_SIZE(p->array);
 	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
 	/* Check array size alone. */
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), (p->foo - SIZE_BUMP) * sizeof(*p->array));
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), (p->count - SIZE_BUMP) * sizeof(*p->array));
 	/* Check check entire object size. */
 	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->foo - SIZE_BUMP) * sizeof(*p->array));
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count - SIZE_BUMP) * sizeof(*p->array));
 }
 
 /*
@@ -348,8 +349,8 @@ TEST_SIGNAL(alloc_size_with_bigger_counted_by_enforced_by_sanitizer, SIGILL)
 	int count = MAX_INDEX + unconst;
 
 	/* malloc() is marked with __attribute__((alloc_size(1))) */
-	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
-	p->foo = count + SIZE_BUMP;
+	struct annotated *p = malloc(sizeof(*p) + count * sizeof(*p->array));
+	p->count = count + SIZE_BUMP;
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, count, SHOULD_TRAP);
