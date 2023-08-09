@@ -205,7 +205,9 @@ def maintained(area, path):
 	return match
 
 def get_prefix(area, paths):
-	ret = subprocess.run(['git', 'log', '-n', '64', '--no-merges', '--oneline', '--follow', '--'] + paths,
+	# "--follow" is very slow, but sometime needed:
+	#ret = subprocess.run(['git', 'log', '-n', '64', '--no-merges', '--oneline', '--follow', '--'] + paths,
+	ret = subprocess.run(['git', 'log', '-n', '64', '--no-merges', '--oneline', '--'] + paths,
 			stdout=subprocess.PIPE,
 			stderr=subprocess.STDOUT, check=False)
 	commits = str(ret.stdout, 'utf-8').strip().splitlines()
