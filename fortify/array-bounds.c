@@ -356,4 +356,26 @@ TEST_SIGNAL(alloc_size_with_bigger_counted_by_enforced_by_sanitizer, SIGILL)
 	TEST_ACCESS(p, count, SHOULD_TRAP);
 }
 
+#if 0
+/*
+ * It would be nice to have a way to verify expected compile time failures.
+ * For example, we want this warning:
+ *
+ * array-bounds.c: In function 'invalid_assignment_order':
+ * array-bounds.c:366:17: warning: '*p.count' is used uninitialized [-Wuninitialized]
+ *   366 |         p->array[0] = 0;
+ *       |         ~~~~~~~~^~~
+ */
+TEST(invalid_assignment_order)
+{
+	int count = MAX_INDEX + unconst;
+
+	struct annotated *p = malloc(sizeof(*p) + count * sizeof(*p->array));
+
+	/* It should be a build error to access "array" before "count" is set. */
+	p->array[0] = 0;
+	p->count = 1;
+}
+#endif
+
 TEST_HARNESS_MAIN
