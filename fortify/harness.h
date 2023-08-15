@@ -988,6 +988,16 @@ void __run_test(struct __fixture_metadata *f,
 		struct __fixture_variant_metadata *variant,
 		struct __test_metadata *t)
 {
+	const char *color_red = "\033[0;31m";
+	const char *color_green = "\033[0;32m";
+	const char *color_default = "\033[0m";
+
+	if (!isatty(STDOUT_FILENO)) {
+	    color_red = "";
+	    color_green = "";
+	    color_default = "";
+	}
+
 	/* reset test struct */
 	t->passed = 1;
 	t->skip = 0;
@@ -1020,8 +1030,10 @@ void __run_test(struct __fixture_metadata *f,
 	} else {
 		__wait_for_test(t);
 	}
-	ksft_print_msg("         %4s  %s%s%s.%s\n", t->passed ? "OK" : "FAIL",
-	       f->name, variant->name[0] ? "." : "", variant->name, t->name);
+	ksft_print_msg("         %s%4s%s  %s%s%s.%s\n",
+		       t->passed ? color_green : color_red,
+		       t->passed ? "OK" : "FAIL", color_default,
+		       f->name, variant->name[0] ? "." : "", variant->name, t->name);
 
 	if (t->skip)
 		ksft_test_result_skip("%s\n", t->results->reason[0] ?
