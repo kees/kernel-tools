@@ -8,7 +8,7 @@
 identifier STRUCT, ARRAY, COUNTER, CALC;
 expression COUNT, REPLACED;
 struct STRUCT *PTR;
-identifier ALLOC =~ "[kv][cvzm]alloc";
+identifier ALLOC =~ ".*[kv][cvzm]alloc.*";
 @@
 
 (
