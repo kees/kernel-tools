@@ -7,7 +7,7 @@ COMMIT_SOURCE=$2
 SHA1=$3
 
 case "$COMMIT_SOURCE,$SHA1" in
- ,)
+ ,|template,)
 	# This is a new commit. (Only get fancy when not doing rebases, etc.)
 
 	# Add separator for readability.
