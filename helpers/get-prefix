@@ -61,3 +61,8 @@ def get_prefixes(area, paths):
 
 if len(sys.argv) > 1:
 	get_prefixes(sys.argv[1], sys.argv[2:])
+else:
+	ret = subprocess.run(['diffstat', '-lp1'],
+			stdout=subprocess.PIPE, check=False)
+	paths = str(ret.stdout, 'utf-8').strip().splitlines()
+	get_prefixes("unknown", paths)
