@@ -11,9 +11,15 @@
 /* Used to stop optimizer from seeing constant expressions. */
 volatile int unconst = 0;
 
+/*
+ * Used make sure allocations are seen as "escaping" the local function
+ * to avoid Dead Store Elimination.
+ */
+volatile void *escape;
+
 #define REPORT_SIZE(p)      do {    \
 	const size_t bdos = __builtin_dynamic_object_size(p, 1); \
-    \
+	escape = p; \
 	if (__builtin_constant_p(bdos)) { \
 		if (bdos == SIZE_MAX) { \
 			TH_LOG(#p " has an unknown-to-bdos size"); \
@@ -67,6 +73,7 @@ struct annotated {
 #define TEST_ACCESS(p, index, enforcement)	do {		\
 								\
 	/* Index zero is in the array. */			\
+	/*TH_LOG("array address: %p", (p)->array);*/		\
 	TH_LOG("safe: array[0] = 0xFF");			\
 	(p)->array[0] = 0xFF;					\
 	ASSERT_EQ((p)->array[0], 0xFF);				\
