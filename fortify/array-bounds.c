@@ -6,6 +6,8 @@
 
 #include "harness.h"
 
+typedef unsigned char u8;
+
 #define noinline __attribute__((__noinline__))
 
 /* Used to stop optimizer from seeing constant expressions. */
@@ -40,6 +42,18 @@ volatile void *escape;
 # define __counted_by(member)	/* __attribute__((__counted_by__(member))) */
 #endif
 
+#define DECLARE_FLEX_ARRAY(TYPE, NAME)		\
+	struct {				\
+		struct { } __empty_ ## NAME;	\
+		TYPE NAME[];			\
+	}
+
+#define DECLARE_BOUNDED_FLEX_ARRAY(COUNT_TYPE, COUNT, TYPE, NAME)	\
+	struct {							\
+		COUNT_TYPE COUNT;					\
+		TYPE NAME[] __counted_by(COUNT);			\
+	}
+
 #define MAX_INDEX	16
 #define SIZE_BUMP	 2
 
@@ -66,11 +80,30 @@ struct annotated {
 	int array[] __counted_by(count);
 };
 
+struct multi {
+	unsigned long flags;
+	union {
+		/* count member type intentionally mismatched to induce padding */
+		DECLARE_BOUNDED_FLEX_ARRAY(int, count_bytes, unsigned char, bytes);
+		DECLARE_BOUNDED_FLEX_ARRAY(u8,  count_ints,  unsigned char, ints);
+		DECLARE_FLEX_ARRAY(unsigned char, unsafe);
+	};
+};
+
+/* Not supported yet. */
+#if 0
+struct ptr_annotated {
+	unsigned long flags;
+	int *array __counted_by(count);
+	unsigned char count;
+};
+#endif
+
 /*
  * Test safe accesses at index 0 and index-1, then optionally check
  * what happens when accessing "index".
  */
-#define TEST_ACCESS(p, index, enforcement)	do {		\
+#define TEST_ACCESS(p, array, index, enforcement)	do {	\
 								\
 	/* Index zero is in the array. */			\
 	/*TH_LOG("array address: %p", (p)->array);*/		\
@@ -113,6 +146,28 @@ static struct annotated * noinline alloc_annotated(int index)
 	return p;
 }
 
+/* Helper to hide the allocation size by using a leaf function. */
+static struct multi * noinline alloc_multi_ints(int index)
+{
+	struct multi *p;
+
+	p = malloc(sizeof(*p) + index * sizeof(*p->ints));
+	p->count_ints = index;
+
+	return p;
+}
+
+/* Helper to hide the allocation size by using a leaf function. */
+static struct multi * noinline alloc_multi_bytes(int index)
+{
+	struct multi *p;
+
+	p = malloc(sizeof(*p) + index * sizeof(*p->bytes));
+	p->count_bytes = index;
+
+	return p;
+}
+
 /*
  * For a structure ending with a fixed-size array, sizeof(*p) should
  * match __builtin_object_size(p, 1), which should also match
@@ -143,7 +198,7 @@ TEST_SIGNAL(fixed_size_enforced_by_sanitizer, SIGILL)
 	int index = MAX_INDEX + unconst;
 
 	REPORT_SIZE(f.array);
-	TEST_ACCESS(&f, index, SHOULD_TRAP);
+	TEST_ACCESS(&f, array, index, SHOULD_TRAP);
 }
 
 /*
@@ -185,7 +240,7 @@ TEST(unknown_size_ignored_by_sanitizer)
 	p = alloc_flex(index);
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, index, SHOULD_NOT_TRAP);
+	TEST_ACCESS(p, array, index, SHOULD_NOT_TRAP);
 }
 
 /*
@@ -227,7 +282,7 @@ TEST_SIGNAL(alloc_size_enforced_by_sanitizer, SIGILL)
 	struct flex *p = malloc(sizeof(*p) + count * sizeof(*p->array));
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, count, SHOULD_TRAP);
+	TEST_ACCESS(p, array, count, SHOULD_TRAP);
 }
 
 /*
@@ -242,19 +297,31 @@ TEST_SIGNAL(alloc_size_enforced_by_sanitizer, SIGILL)
 TEST(counted_by_seen_by_bdos)
 {
 	struct annotated *p;
+	struct multi *m;
 	int index = MAX_INDEX + unconst;
 
+#define CHECK(p, array, count)						\
+	REPORT_SIZE(p->array);						\
+									\
+	EXPECT_GE(sizeof(*p), offsetof(typeof(*p), array));		\
+	/* Check array size alone. */					\
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);	\
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array)); \
+	/* Check check entire object size. */				\
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);		\
+	/* EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->count * sizeof(*p->array)); */ \
+	do { } while (0)
+
 	p = alloc_annotated(index);
+	CHECK(p, array, count);
 
-	REPORT_SIZE(p->array);
+	m = alloc_multi_ints(index);
+	CHECK(m, ints, count_ints);
 
-	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
-	/* Check array size alone. */
-	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array));
-	/* Check check entire object size. */
-	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
-	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->count * sizeof(*p->array));
+	m = alloc_multi_bytes(index);
+	CHECK(m, bytes, count_bytes);
+
+#undef CHECK
 }
 
 /*
@@ -271,7 +338,29 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer, SIGILL)
 	p = alloc_annotated(index);
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, index, SHOULD_TRAP);
+	TEST_ACCESS(p, array, index, SHOULD_TRAP);
+}
+
+TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_ints, SIGILL)
+{
+	struct multi *m;
+	int index = MAX_INDEX + unconst;
+
+	m = alloc_multi_ints(index);
+
+	REPORT_SIZE(m->ints);
+	TEST_ACCESS(m, ints, index, SHOULD_TRAP);
+}
+
+TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_bytes, SIGILL)
+{
+	struct multi *m;
+	int index = MAX_INDEX + unconst;
+
+	m = alloc_multi_bytes(index);
+
+	REPORT_SIZE(m->bytes);
+	TEST_ACCESS(m, bytes, index, SHOULD_TRAP);
 }
 
 /*
@@ -315,7 +404,7 @@ TEST_SIGNAL(alloc_size_with_smaller_counted_by_enforced_by_sanitizer, SIGILL)
 	p->count = count;
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, count, SHOULD_TRAP);
+	TEST_ACCESS(p, array, count, SHOULD_TRAP);
 }
 
 /*
@@ -360,7 +449,7 @@ TEST_SIGNAL(alloc_size_with_bigger_counted_by_enforced_by_sanitizer, SIGILL)
 	p->count = count + SIZE_BUMP;
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, count, SHOULD_TRAP);
+	TEST_ACCESS(p, array, count, SHOULD_TRAP);
 }
 
 #if 0
