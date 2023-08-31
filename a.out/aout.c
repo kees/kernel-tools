@@ -33,16 +33,20 @@ struct a_out
 	unsigned int a_drsize;	/* data relocation size */
 };
 
-#define Z_MAGIC_LOAD_ADDR	0x0000
+#define Q_MAGIC_MAGIC		(0x006400ccUL)
 #define Q_MAGIC_TXT_FDOFF	0x0000
 #define Q_MAGIC_LOAD_ADDR	0x1000
+
+#define Z_MAGIC_MAGIC		(0x0064010bUL)
 #define Z_MAGIC_TXT_FDOFF	0x0400
+#define Z_MAGIC_LOAD_ADDR	0x0000
+
 #define MMAP_MIN_ADDR_PATH	"/proc/sys/vm/mmap_min_addr"
 
 #define ALIGN(x, a)		ALIGN_MASK(x, (unsigned long)(a) - 1)
 #define ALIGN_MASK(x, mask)	(typeof(x))(((unsigned long)(x) + (mask)) & ~(mask))
 
-static void check_mmap_min_addr(unsigned long load_addr)
+static void check_mmap_min_addr(unsigned long load_addr, const char *name)
 {
 	unsigned long addr;
 	char buf[128], *result;
@@ -60,16 +64,16 @@ static void check_mmap_min_addr(unsigned long load_addr)
 	if (addr <= load_addr)
 		return;
 
-	fprintf(stderr, "%s is set to %lu but this a.out binary must be mapped at %lu.\n",
-		MMAP_MIN_ADDR_PATH, addr, load_addr);
+	fprintf(stderr, "%s is set to %lu but this %s a.out binary must be mapped at %lu.\n",
+		MMAP_MIN_ADDR_PATH, addr, name, load_addr);
 	fprintf(stderr, "To temporarily change this, run: sudo sysctl -w vm.mmap_min_addr=%lu\n",
 		load_addr);
 }
 
 int main(int argc, char *argv[], char *envp[])
 {
-	static const unsigned long qmagic = 0x006400cc;
-	static const unsigned long zmagic = 0x0064010b;
+	void *disk_image;
+	struct a_out aout_local;
 	struct a_out *aout;
 	struct stat info;
 	unsigned char *image, *image_end, *bss, *bss_end, *stack, *stack_end;
@@ -79,10 +83,11 @@ int main(int argc, char *argv[], char *envp[])
 	int pagesize;
 	int fd;
 	int argc_copy, envc_copy;
-	unsigned int txtoff = Q_MAGIC_TXT_FDOFF;
+	unsigned int txtoff;
+	unsigned long load_addr;
+	const char *file_type;
 	char **argv_copy, **envp_copy;
-	unsigned long load_addr = Q_MAGIC_LOAD_ADDR;
-	ssize_t cur_bytes, total_bytes = 0;
+	size_t image_bytes;
 
 	if (sizeof(void *) != 4) {
 		fprintf(stderr, "Eek: I was compiled in 64-bit mode. Please build with -m32.\n");
@@ -110,58 +115,54 @@ int main(int argc, char *argv[], char *envp[])
 		return 1;
 	}
 
-	aout = (struct a_out *)mmap(NULL, sizeof(*aout), PROT_READ,
-				    MAP_PRIVATE, fd, 0);
+	aout = disk_image = mmap(NULL, info.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (aout == MAP_FAILED) {
 		perror("mmap");
 		return 1;
 	}
 
-	if (aout->a_info == zmagic) {
+	/* Make a copy of the a.out header. */
+	aout_local = *aout;
+	aout = &aout_local;
+
+	switch (aout->a_info) {
+	case Q_MAGIC_MAGIC:
+		load_addr = Q_MAGIC_LOAD_ADDR;
+		txtoff = Q_MAGIC_TXT_FDOFF;
+		file_type = "QMAGIC";
+		break;
+	case Z_MAGIC_MAGIC:
 		load_addr = Z_MAGIC_LOAD_ADDR;
 		txtoff = Z_MAGIC_TXT_FDOFF;
-	} else if (aout->a_info != qmagic) {
+		file_type = "ZMAGIC";
+		break;
+	default:
 		fprintf(stderr, "%s: not ia32 QMAGIC or ZMAGIC a.out binary (header 0x%x != 0x%lx or 0x%lx)\n",
-			argv[1], aout->a_info, qmagic, zmagic);
+			argv[1], aout->a_info, Q_MAGIC_MAGIC, Z_MAGIC_MAGIC);
 		return 1;
 	}
 
-	/* Load file into memory at Q/Z_MAGIC_LOAD_ADDR. */
 	pagesize = getpagesize();
-	if (txtoff & (pagesize - 1)) {
-		image = mmap((void *)load_addr, info.st_size - txtoff,
-			     PROT_EXEC | PROT_READ | PROT_WRITE,
-			     MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-		if (image == MAP_FAILED) {
-			perror("mmap");
-			check_mmap_min_addr(load_addr);
-			return 1;
-		}
-		if (lseek(fd, txtoff, SEEK_SET) == (off_t)-1) {
-			perror("lseek");
-			return 1;
-		}
-		while (total_bytes < (info.st_size - txtoff)) {
-			cur_bytes = read(fd, image, (info.st_size - txtoff) - total_bytes);
-			if (cur_bytes < 0) {
-				if (errno == EINTR) continue;
-				perror("Failed to read in executable image");
-				return 1;
-			}
 
-			total_bytes += cur_bytes;
-		}
-	} else {
-		image = mmap((void *)load_addr, info.st_size - txtoff,
-			     PROT_EXEC | PROT_READ | PROT_WRITE,
-			     MAP_FIXED | MAP_PRIVATE, fd, txtoff);
-		if (image == MAP_FAILED) {
-			perror("mmap");
-			check_mmap_min_addr(load_addr);
-			return 1;
-		}
+	/* How many bytes do we want from disk? */
+	image_bytes = info.st_size - txtoff;
+
+	/* Create region to hold final executable image. */
+	image = mmap((void *)load_addr, image_bytes,
+		     PROT_EXEC | PROT_READ | PROT_WRITE,
+		     MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	if (image == MAP_FAILED) {
+		perror("mmap");
+		check_mmap_min_addr(load_addr, file_type);
+		return 1;
 	}
-	image_end = ALIGN(image + (info.st_size - txtoff), pagesize);
+	memcpy(image, disk_image + txtoff, image_bytes);
+	if (munmap(disk_image, info.st_size) < 0) {
+		perror("munmap");
+		return 1;
+	}
+
+	image_end = ALIGN(image + image_bytes, pagesize);
 
 	if (aout->a_syms != 0) {
 		fprintf(stderr, "%s: a.out header a_syms must be 0.\n", argv[1]);
