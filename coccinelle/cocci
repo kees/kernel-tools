@@ -30,7 +30,7 @@ ARGS=$(make coccicheck V=1 MODE=patch COCCI=/dev/null 2>&1 | \
 
 # If we're running a .cocci file from scripts/coccinelle, it may expect to
 # have the "-D patch" argument.
-if grep -qm1 'depends on patch' "$1" ; then
+if grep -Eqm1 'depends on\b.*\bpatch\b' "$1" ; then
 	ARGS="$ARGS -D patch"
 fi
 
