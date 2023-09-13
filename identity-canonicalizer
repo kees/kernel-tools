@@ -28,8 +28,8 @@ bad_email = re.compile(r'([ <>])')
 quoted = re.compile(r'^"(.*)"$')
 # Ignore affiliations
 affiliated = re.compile(r'^(.*)\(.*\)$')
-# Ignore these identities, which are bots, collectives, twitter handles, or intentially no email.
-email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org|A cast of thousands|KASAN|Ryota Shiga(?: \(Flatt Security\))?|Thomas Sattler|many different companies|Coverity Static Analyzer.*|Marco Scardovi|https?://.*|Marian Rainer-Harbach|.* \(@[^@]*\))$')
+# Ignore these identities, which are bots, collectives, twitter handles, or intentionally no email.
+email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org|A cast of thousands|KASAN|Ryota Shiga(?: \(Flatt Security\))?|Thomas Sattler|many different companies|Coverity Static Analyzer.*|Marco Scardovi|https?://.*|Marian Rainer-Harbach|Max VA|.* working with ZDI|Android Treehugger Robot|tag, or it goes automatically\?|is not accompanied by a link to the report\.  Those links are|.* \(@[^@]*\))$')
 # Ignore these names, which may use a "real" email address, but are considered bots.
 name_ignore = re.compile(r'^(kernel test robot|coverity-bot)$')
 # Ignore one-off typos.
@@ -90,6 +90,12 @@ spelling = {
 		"Justin M. Forbes": "Justin Forbes",
 		# Maybe ignore names shorter than 3 chars?
 		"sh": "Hui Su",
+		"Raphael Gallais-Pou": "Raphaël Gallais-Pou",
+		"XU pengfei": "Pengfei Xu",
+		"Soenke Huster": "Sönke Huster",
+		"Ondrej Mosnacek": "Ondrej Mosnáček",
+		# https://lore.kernel.org/all/20220915012800.825196-1-SJLIN0@nuvoton.com/
+		"SJLIN0": "Wallace Lin",
 	   }
 
 email_typos = {
@@ -107,6 +113,8 @@ email_typos = {
 		# bcd97734318d1d87bb237dbc0a60c81237b0ac50
 		# ee50e67ba0e17b1a1a8d76691d02eadf9e0f392c
 		'mathew.j.martineau>@linux.intel.com': 'mathew.j.martineau@linux.intel.com',
+		# d1f1cecc92ae0dba44eac3ce10baf4edb4553e41
+		'irogers>@google.com': 'irogers@google.com',
 	      }
 
 full_replace = {
@@ -147,6 +155,18 @@ full_replace = {
 		'Sherlock Holo sherlockya@gmail.com': 'Sherlock Holo <sherlockya@gmail.com>',
 		# Various
 		'Srinivas Pandruvada <srinivas.pI andruvada@linux.intel.com>': 'Srinivas Pandruvada <srinivas.pandruvada@linux.intel.com>',
+		# d6020f4b26179481c7cb13aa94d7abcdfd8a4326
+		'Hans Verkuil <hverkuil-cisco at xs4all.nl>': 'Hans Verkuil <hverkuil-cisco@xs4all.nl>',
+		# a4d1846512e12f9e84be63b3f2f2165e4d0d2d1e
+		'Uwe Kleine-König <(address hidden)>': 'Uwe Kleine-König <u.kleine-koenig@pengutronix.de>',
+		# b2cfec52feb3bb737c4b65018ef4bfe9789e4be8
+		'Inki Dae <m.szyprowski@samsung.com>': 'Inki Dae <inki.dae@samsung.com>',
+		# a820190204aef0739aa3a067d00273d117f9367c
+		'Martin <martin.leung@amd.com>': 'Martin Leung <martin.leung@amd.com>',
+		# 10a9accd4842e6098cc27d79d43d7542254003bc
+		'Ilya <Ilya.Bakoulin@amd.com>': 'Ilya Bakoulin <Ilya.Bakoulin@amd.com>',
+		# e3290f883127159e3aa7957f30bd4266602d403e
+		'Suraj Kandpal': 'Suraj Kandpal <suraj.kandpal@intel.com>',
 	     }
 
 def guess_name(name):
@@ -440,6 +460,20 @@ for line in sys.stdin:
 	else:
 		email = line
 		name = None
+
+		# Special case: is this a malformed email lacking <>s that we can easily handle?
+		# e.g.	Michal Kubecek mkubecek@suse.cz
+		if ' ' in email:
+			words = email.split(' ')
+			last_word = words.pop()
+			if '@' in last_word:
+				email = last_word
+				if email.startswith('<'):
+					email = email[1:]
+				if email.endswith('>'):
+					email = email[:-1]
+				if len(words) > 0:
+					name = " ".join(words)
 
 	# Ignore various emails.
 	hit = email_ignore.search(email)
