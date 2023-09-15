@@ -110,9 +110,12 @@ struct ptr_annotated {
 	TH_LOG("safe: array[0] = 0xFF");			\
 	(p)->array[0] = 0xFF;					\
 	ASSERT_EQ((p)->array[0], 0xFF);				\
-	TH_LOG("safe: array[%d] = 0xFF", index - 1);		\
-	(p)->array[index - 1] = 0xFF;				\
-	ASSERT_EQ((p)->array[index - 1], 0xFF);			\
+								\
+	if (index > 1) {					\
+		TH_LOG("safe: array[%d] = 0xFF", index - 1);	\
+		(p)->array[index - 1] = 0xFF;			\
+		ASSERT_EQ((p)->array[index - 1], 0xFF);		\
+	}							\
 								\
 	if (enforcement == SHOULD_TRAP) {			\
 		/* "index" is expected to trap. */		\
@@ -339,6 +342,17 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer, SIGILL)
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, array, index, SHOULD_TRAP);
+}
+
+TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_index, SIGILL)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+
+	p = alloc_annotated(index);
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, array, -1, SHOULD_TRAP);
 }
 
 TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_ints, SIGILL)
