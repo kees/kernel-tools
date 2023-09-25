@@ -20,14 +20,19 @@ case "$COMMIT_SOURCE,$SHA1" in
 	# Include diff in comments for easier review.
 	awk '{print "# " $0}' <"$PATCH" >>"$COMMIT_MSG_FILE"
 
-	# Get CC list.
-	echo "Getting CC list ..." >&2
-	~/bin/merge-cc "$PATCH" "$COMMIT_MSG_FILE"
-
-	# Generate best-guess on prefixes...
-	echo "Getting Subject prefixes ..." >&2
+	# Assume any patch >50 files is a treewide patch...
 	PREFIX_FILE=$(mktemp -t prepare-commit-msg-prefix-XXXXXX)
-	~/bin/get-prefix unknown $(diffstat -p1 -l < "$PATCH") >"$PREFIX_FILE"
+	if [ $(diffstat -p1 < "$PATCH" | wc -l) -lt 50 ]; then
+		# Get CC list.
+		echo "Getting CC list ..." >&2
+		~/bin/merge-cc "$PATCH" "$COMMIT_MSG_FILE"
+
+		# Generate best-guess on prefixes...
+		echo "Getting Subject prefixes ..." >&2
+		~/bin/get-prefix unknown $(diffstat -p1 -l < "$PATCH") >"$PREFIX_FILE"
+	else
+		echo "treewide:" >"$PREFIX_FILE"
+	fi
 	cat "$COMMIT_MSG_FILE" >>"$PREFIX_FILE"
 	mv "$PREFIX_FILE" "$COMMIT_MSG_FILE"
 
