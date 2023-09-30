@@ -54,6 +54,12 @@ volatile void *escape;
 		TYPE NAME[] __counted_by(COUNT);			\
 	}
 
+#define DECLARE_FLEX_ARRAY_COUNTED_BY(TYPE, NAME, COUNTED_BY)		\
+	struct {							\
+		struct { } __empty_ ## NAME;				\
+		TYPE NAME[] __counted_by(COUNTED_BY);			\
+	}
+
 #define MAX_INDEX	16
 #define SIZE_BUMP	 2
 
@@ -87,6 +93,19 @@ struct multi {
 		DECLARE_BOUNDED_FLEX_ARRAY(int, count_bytes, unsigned char, bytes);
 		DECLARE_BOUNDED_FLEX_ARRAY(u8,  count_ints,  unsigned char, ints);
 		DECLARE_FLEX_ARRAY(unsigned char, unsafe);
+	};
+};
+
+struct anon_struct {
+	unsigned long flags;
+	size_t count;
+	DECLARE_FLEX_ARRAY_COUNTED_BY(int, array, count);
+};
+
+struct count_self {
+	union {
+		unsigned long count;
+		DECLARE_FLEX_ARRAY_COUNTED_BY(unsigned long, array, count);
 	};
 };
 
@@ -167,6 +186,28 @@ static struct multi * noinline alloc_multi_bytes(int index)
 
 	p = malloc(sizeof(*p) + index * sizeof(*p->bytes));
 	p->count_bytes = index;
+
+	return p;
+}
+
+/* Helper to hide the allocation size by using a leaf function. */
+static struct anon_struct * noinline alloc_anon_struct(int index)
+{
+	struct anon_struct *p;
+
+	p = malloc(sizeof(*p) + index * sizeof(*p->array));
+	p->count = index;
+
+	return p;
+}
+
+/* Helper to hide the allocation size by using a leaf function. */
+static struct count_self * noinline alloc_count_self(int index)
+{
+	struct count_self *p;
+
+	p = malloc(sizeof(*p) + index * sizeof(*p->array));
+	p->longs = (sizeof(*p) / sizeof(*p->array)) + index;
 
 	return p;
 }
@@ -301,6 +342,8 @@ TEST(counted_by_seen_by_bdos)
 {
 	struct annotated *p;
 	struct multi *m;
+	struct anon_struct *s;
+	struct count_self *c;
 	int index = MAX_INDEX + unconst;
 
 #define CHECK(p, array, count)						\
@@ -323,6 +366,12 @@ TEST(counted_by_seen_by_bdos)
 
 	m = alloc_multi_bytes(index);
 	CHECK(m, bytes, count_bytes);
+
+	s = alloc_anon_struct(index);
+	CHECK(s, array, count);
+
+	c = alloc_count_self(index);
+	CHECK(c, array, count);
 
 #undef CHECK
 }
@@ -348,11 +397,12 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_index, SIGILL)
 {
 	struct annotated *p;
 	int index = MAX_INDEX + unconst;
+	int negative_one = -1 + unconst;
 
 	p = alloc_annotated(index);
 
 	REPORT_SIZE(p->array);
-	TEST_ACCESS(p, array, -1, SHOULD_TRAP);
+	TEST_ACCESS(p, array, negative_one, SHOULD_TRAP);
 }
 
 TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_ints, SIGILL)
@@ -375,6 +425,28 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_bytes, SIGILL)
 
 	REPORT_SIZE(m->bytes);
 	TEST_ACCESS(m, bytes, index, SHOULD_TRAP);
+}
+
+TEST_SIGNAL(counted_by_enforced_by_sanitizer_anon_struct, SIGILL)
+{
+	struct anon_struct *s;
+	int index = MAX_INDEX + unconst;
+
+	s = alloc_anon_struct(index);
+
+	REPORT_SIZE(s->array);
+	TEST_ACCESS(s, array, index, SHOULD_TRAP);
+}
+
+TEST_SIGNAL(counted_by_enforced_by_sanitizer_count_self, SIGILL)
+{
+	struct count_self *c;
+	int index = MAX_INDEX + unconst;
+
+	c = alloc_count_self(index);
+
+	REPORT_SIZE(c->array);
+	TEST_ACCESS(c, array, index + 1, SHOULD_TRAP);
 }
 
 /*
