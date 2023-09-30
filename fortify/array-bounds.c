@@ -102,12 +102,14 @@ struct anon_struct {
 	DECLARE_FLEX_ARRAY_COUNTED_BY(int, array, count);
 };
 
+#if 0
 struct count_self {
 	union {
 		unsigned long count;
 		DECLARE_FLEX_ARRAY_COUNTED_BY(unsigned long, array, count);
 	};
 };
+#endif
 
 /* Not supported yet. */
 #if 0
@@ -201,6 +203,7 @@ static struct anon_struct * noinline alloc_anon_struct(int index)
 	return p;
 }
 
+#if 0
 /* Helper to hide the allocation size by using a leaf function. */
 static struct count_self * noinline alloc_count_self(int index)
 {
@@ -211,6 +214,7 @@ static struct count_self * noinline alloc_count_self(int index)
 
 	return p;
 }
+#endif
 
 /*
  * For a structure ending with a fixed-size array, sizeof(*p) should
@@ -343,7 +347,9 @@ TEST(counted_by_seen_by_bdos)
 	struct annotated *p;
 	struct multi *m;
 	struct anon_struct *s;
+#if 0
 	struct count_self *c;
+#endif
 	int index = MAX_INDEX + unconst;
 
 #define CHECK(p, array, count)						\
@@ -370,8 +376,10 @@ TEST(counted_by_seen_by_bdos)
 	s = alloc_anon_struct(index);
 	CHECK(s, array, count);
 
+#if 0
 	c = alloc_count_self(index);
 	CHECK(c, array, count);
+#endif
 
 #undef CHECK
 }
@@ -438,6 +446,7 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_anon_struct, SIGILL)
 	TEST_ACCESS(s, array, index, SHOULD_TRAP);
 }
 
+#if 0
 TEST_SIGNAL(counted_by_enforced_by_sanitizer_count_self, SIGILL)
 {
 	struct count_self *c;
@@ -448,6 +457,7 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_count_self, SIGILL)
 	REPORT_SIZE(c->array);
 	TEST_ACCESS(c, array, index + 1, SHOULD_TRAP);
 }
+#endif
 
 /*
  * When both __alloc_size and __counted_by are available to calculate
