@@ -8,7 +8,8 @@
 identifier STRUCT, ARRAY, COUNTER, CALC;
 expression COUNT, REPLACED;
 struct STRUCT *PTR;
-identifier ALLOC =~ ".*[kv][cvzm]alloc.*";
+identifier ALLOC;
+type ELEMENT_TYPE;
 @@
 
 (
@@ -16,7 +17,15 @@ identifier ALLOC =~ ".*[kv][cvzm]alloc.*";
 	... when != CALC = REPLACED
  	PTR = ALLOC(..., CALC, ...);
 |
- 	PTR = ALLOC(..., struct_size(PTR, ARRAY, COUNT), ...);
+	CALC = \(sizeof(*PTR)\|sizeof(struct STRUCT)\) +
+		(COUNT * \(sizeof(*PTR->ARRAY)\|sizeof(PTR->ARRAY[0])\|sizeof(ELEMENT_TYPE)\));
+	... when != CALC = REPLACED
+	PTR = ALLOC(..., CALC, ...);
+|
+	PTR = ALLOC(..., struct_size(PTR, ARRAY, COUNT), ...);
+|
+	PTR = ALLOC(..., \(sizeof(*PTR)\|sizeof(struct STRUCT)\) +
+			 (COUNT * \(sizeof(*PTR->ARRAY)\|sizeof(PTR->ARRAY[0])\|sizeof(ELEMENT_TYPE)\)), ...);
 )
 (
 ?	if (!PTR) { ... }
@@ -47,6 +56,8 @@ type COUNTER_TYPE, ARRAY_TYPE;
 identifier allocated.STRUCT;
 identifier allocated.ARRAY;
 identifier allocated.COUNTER;
+type allocated.ELEMENT_TYPE;
+identifier OTHER_ARRAY;		// Without struct_size(), ARRAY be be misidentified.
 attribute name __counted_by;
 @@
 
@@ -55,9 +66,15 @@ attribute name __counted_by;
  	COUNTER_TYPE COUNTER;
  	...
 (
-	ARRAY_TYPE ARRAY[] __counted_by(COUNTER);
+	\(ARRAY_TYPE\|ELEMENT_TYPE\) \(ARRAY\|OTHER_ARRAY\)[] __counted_by(COUNTER);
 |
-	ARRAY_TYPE ARRAY[]
+	ELEMENT_TYPE { ... } \(ARRAY\|OTHER_ARRAY\)[] __counted_by(COUNTER);
+|
+	\(ARRAY_TYPE\|ELEMENT_TYPE\) \(ARRAY\|OTHER_ARRAY\)[]
++	__counted_by(COUNTER)
+	;
+|
+	ELEMENT_TYPE { ... } \(ARRAY\|OTHER_ARRAY\)[]
 +	__counted_by(COUNTER)
 	;
 )
