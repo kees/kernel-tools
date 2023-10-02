@@ -66,6 +66,8 @@ if ! ssh git@gitolite.kernel.org 2fa isval >/dev/null; then
 	echo -n "Enter TOTP token: "
 	stty -F /dev/tty -echo
 	read token </dev/tty
+	# Show the line feed
+	echo ""
 	stty -F /dev/tty echo
 	ssh git@gitolite.kernel.org 2fa val "$token"
 fi
