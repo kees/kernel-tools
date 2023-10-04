@@ -15,7 +15,7 @@ type ELEMENT_TYPE;
 (
 	CALC = struct_size(PTR, ARRAY, COUNT);
 	... when != CALC = REPLACED
- 	PTR = ALLOC(..., CALC, ...);
+	PTR = ALLOC(..., CALC, ...);
 |
 	CALC = \(sizeof(*PTR)\|sizeof(struct STRUCT)\) +
 		(COUNT * \(sizeof(*PTR->ARRAY)\|sizeof(PTR->ARRAY[0])\|sizeof(ELEMENT_TYPE)\));
@@ -31,6 +31,10 @@ type ELEMENT_TYPE;
 ?	if (!PTR) { ... }
  	... when != PTR->ARRAY
 	PTR->COUNTER = COUNT;
+|
+	if (PTR) {
+		PTR->COUNTER = COUNT;
+	}
 |
 	if (!PTR) { ... }
 +	PTR->COUNTER = COUNT;
