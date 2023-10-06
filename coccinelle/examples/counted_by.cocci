@@ -1,4 +1,4 @@
-// Options: --all-includes
+// Options: --recursive-includes
 
 // When finding the element count assignment, it must be reordered
 // to before any accesses of the PTR->ARRAY itself, otherwise runtime
@@ -10,6 +10,7 @@ expression COUNT, REPLACED;
 struct STRUCT *PTR;
 identifier ALLOC;
 type ELEMENT_TYPE;
+expression INDEX;
 @@
 
 (
@@ -28,6 +29,10 @@ type ELEMENT_TYPE;
 			 (COUNT * \(sizeof(*PTR->ARRAY)\|sizeof(PTR->ARRAY[0])\|sizeof(ELEMENT_TYPE)\)), ...);
 )
 (
+?	if (!PTR) { ... }
+	... when != PTR->ARRAY[INDEX]
+	PTR->COUNTER = COUNT;
+|
 ?	if (!PTR) { ... }
  	... when != PTR->ARRAY
 	PTR->COUNTER = COUNT;
@@ -61,7 +66,7 @@ identifier allocated.STRUCT;
 identifier allocated.ARRAY;
 identifier allocated.COUNTER;
 type allocated.ELEMENT_TYPE;
-identifier OTHER_ARRAY;		// Without struct_size(), ARRAY be be misidentified.
+identifier OTHER_ARRAY;		// Without struct_size(), ARRAY can be misidentified.
 attribute name __counted_by;
 @@
 
@@ -82,5 +87,20 @@ attribute name __counted_by;
 +	__counted_by(COUNTER)
 	;
 )
+	...
+ };
+
+// Make sure we catch anything we may have missed above, so we can refine
+// the pattern matching.
+@annotate_broke depends on !annotate@
+type COUNTER_TYPE;
+identifier allocated.STRUCT;
+identifier allocated.COUNTER;
+@@
+
+ struct STRUCT {
+	...
+	COUNTER_TYPE COUNTER;
++	int failed;
 	...
  };
