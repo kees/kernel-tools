@@ -167,6 +167,8 @@ full_replace = {
 		'Ilya <Ilya.Bakoulin@amd.com>': 'Ilya Bakoulin <Ilya.Bakoulin@amd.com>',
 		# e3290f883127159e3aa7957f30bd4266602d403e
 		'Suraj Kandpal': 'Suraj Kandpal <suraj.kandpal@intel.com>',
+		# aa8a950a5d6b2094830aff834198777371ff91ff
+		'AceLan Kao <acelan.kao@canonical.com>': 'AceLan Kao <acelan@gmail.com>',
 	     }
 
 def guess_name(name):
