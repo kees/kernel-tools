@@ -23,7 +23,7 @@ alias short='git short'
 	latest = "!f() { if [ \"$1\" = \"${1%%/*}\" ]; then branch=\"$1/master\"; else branch=\"$1\"; fi && git describe --tags --abbrev=0 \"$branch\"; }; f"
 	short = "!f() { for i in \"$@\"; do git log -1 --pretty='%h (\"%s\")' \"$i\"; done; }; f"
 	b4am = "!f() { b4 am -tlsS -o- \"$@\" | git am; }; f"
-	amm = "!f() { b4 shazam -tlsSA \"$@\"; }; f"
+	amm = "!f() { b4 shazam -tlsS \"$@\"; }; f"
 	latr = branch --sort=committerdate
 	grpe = grep
 	ann = annotate
