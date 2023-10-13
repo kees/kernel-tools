@@ -29,7 +29,7 @@ quoted = re.compile(r'^"(.*)"$')
 # Ignore affiliations
 affiliated = re.compile(r'^(.*)\(.*\)$')
 # Ignore these identities, which are bots, collectives, twitter handles, or intentionally no email.
-email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org|A cast of thousands|KASAN|Ryota Shiga(?: \(Flatt Security\))?|Thomas Sattler|many different companies|Coverity Static Analyzer.*|Marco Scardovi|https?://.*|Marian Rainer-Harbach|Max VA|.* working with ZDI|Android Treehugger Robot|tag, or it goes automatically\?|is not accompanied by a link to the report\.  Those links are|.* \(@[^@]*\))$')
+email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org|A cast of thousands|KASAN|Ryota Shiga(?: \(Flatt Security\))?|Thomas Sattler|many different companies|Coverity Static Analyzer.*|Marco Scardovi|https?://.*|Marian Rainer-Harbach|Max VA|.* working with ZDI|Android Treehugger Robot|tag, or it goes automatically\?|is not accompanied by a link to the report\.  Those links are|sanity checks in grsecurity|.* \(@[^@]*\))$')
 # Ignore these names, which may use a "real" email address, but are considered bots.
 name_ignore = re.compile(r'^(kernel test robot|coverity-bot)$')
 # Ignore one-off typos.
