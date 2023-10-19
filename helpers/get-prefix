@@ -16,6 +16,8 @@
 #
 import sys, re, fnmatch, subprocess, operator
 
+debug = False
+
 # Update the copy in split-on-maintainer...
 def get_prefixes(area, paths):
 	# "--follow" is very slow, but sometime needed:
@@ -41,9 +43,18 @@ def get_prefixes(area, paths):
 			prefix = title.rpartition(':')[0]
 			# Ignore useless prefixes.
 			if not prefix in ['net', 'treewide']:
-				prefixes.setdefault(prefix, 0)
-				prefixes[prefix] += 1
-	best = 0
+				prefixes.setdefault(prefix, 0.0)
+				# Count # of files in commit.
+				sha = commit.split(' ', 1)[0].strip()
+				wc = subprocess.run(['git', 'show', '--format=', '--name-status', sha],
+						stdout=subprocess.PIPE, check=False)
+				files = str(wc.stdout, 'utf-8').strip().splitlines()
+				divisor = len(files)
+				if divisor == 0:
+					divisor = 1
+				divisor = float(divisor)
+				prefixes[prefix] += 1.0 / divisor
+	best = 0.0
 	prefix = None
 
 	likely = sorted(prefixes.items(), key=operator.itemgetter(1), reverse=True)
@@ -53,11 +64,14 @@ def get_prefixes(area, paths):
 		print("%s:" % area)
 		return
 
-	if count > 5:
+	if count > 5 and not debug:
 		count = 5
 
 	for i in range(count):
-		print("%s:" % (likely[i][0]))
+		if debug:
+			print("%f %s:" % (likely[i][1], likely[i][0]))
+		else:
+			print("%s:" % (likely[i][0]))
 
 if len(sys.argv) > 1:
 	get_prefixes(sys.argv[1], sys.argv[2:])
