@@ -63,6 +63,7 @@ case "$COMMIT_SOURCE,$SHA1" in
 	# Dump commit into a file:
 	PATCH=$(mktemp -t prepare-commit-msg-patch-XXXXXX)
 	git diff $SHA1~ > "$PATCH"
+	#git diff --staged > "$PATCH"
 
 	# Add separator for readability.
 	echo "#" >>"$COMMIT_MSG_FILE"
