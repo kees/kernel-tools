@@ -34,6 +34,9 @@ if grep -Eqm1 'depends on\b.*\bpatch\b' "$1" ; then
 	ARGS="$ARGS -D patch"
 fi
 
+# Adjust max width to current preferred max of 80 characters:
+ARGS="$ARGS --max-width=80"
+
 # What kind of processing to do on header files:
 options=$(grep -m1 '// Options:' "$1" | cut -d: -f2-)
 if [ -z "$options" ]; then
