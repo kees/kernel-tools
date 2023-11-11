@@ -102,6 +102,11 @@ struct anon_struct {
 	DECLARE_FLEX_ARRAY_COUNTED_BY(int, array, count);
 };
 
+struct composite {
+	unsigned stuff;
+	struct annotated inner;
+};
+
 #if 0
 struct count_self {
 	union {
@@ -199,6 +204,17 @@ static struct anon_struct * noinline alloc_anon_struct(int index)
 
 	p = malloc(sizeof(*p) + index * sizeof(*p->array));
 	p->count = index;
+
+	return p;
+}
+
+/* Helper to hide the allocation size by using a leaf function. */
+static struct composite * noinline alloc_composite(int index)
+{
+	struct composite *p;
+
+	p = malloc(sizeof(*p) + index * sizeof(*p->inner.array));
+	p->inner.count = index;
 
 	return p;
 }
@@ -347,6 +363,7 @@ TEST(counted_by_seen_by_bdos)
 	struct annotated *p;
 	struct multi *m;
 	struct anon_struct *s;
+	struct composite *c;
 #if 0
 	struct count_self *c;
 #endif
@@ -375,6 +392,9 @@ TEST(counted_by_seen_by_bdos)
 
 	s = alloc_anon_struct(index);
 	CHECK(s, array, count);
+
+	c = alloc_composite(index);
+	CHECK(c, inner.array, inner.count);
 
 #if 0
 	c = alloc_count_self(index);
@@ -444,6 +464,17 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_anon_struct, SIGILL)
 
 	REPORT_SIZE(s->array);
 	TEST_ACCESS(s, array, index, SHOULD_TRAP);
+}
+
+TEST_SIGNAL(counted_by_enforced_by_sanitizer_composite, SIGILL)
+{
+	struct composite *c;
+	int index = MAX_INDEX + unconst;
+
+	c = alloc_composite(index);
+
+	REPORT_SIZE(c->inner.array);
+	TEST_ACCESS(c, inner.array, index, SHOULD_TRAP);
 }
 
 #if 0
