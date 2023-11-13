@@ -99,7 +99,8 @@ struct multi {
 struct anon_struct {
 	unsigned long flags;
 	size_t count;
-	DECLARE_FLEX_ARRAY_COUNTED_BY(int, array, count);
+	int array[] __counted_by(count);
+	//gcc: DECLARE_FLEX_ARRAY_COUNTED_BY(int, array, count);
 };
 
 struct composite {
@@ -368,11 +369,17 @@ TEST(counted_by_seen_by_bdos)
 	struct count_self *c;
 #endif
 	int index = MAX_INDEX + unconst;
+	int negative = -3 + unconst;
 
 #define CHECK(p, array, count)						\
 	REPORT_SIZE(p->array);						\
 									\
 	EXPECT_GE(sizeof(*p), offsetof(typeof(*p), array));		\
+	/* Check single array indexes. */				\
+	EXPECT_EQ(__builtin_object_size(&p->array[index - 1], 1), SIZE_MAX); \
+	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[index - 1], 1), sizeof(*p->array)); \
+	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[index], 1), 0); \
+/* gcc:	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[negative], 1), 0); */ \
 	/* Check array size alone. */					\
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);	\
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array)); \
