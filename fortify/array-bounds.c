@@ -7,6 +7,7 @@
 #include "harness.h"
 
 typedef unsigned char u8;
+typedef signed char s8;
 
 #define noinline __attribute__((__noinline__))
 
@@ -76,13 +77,13 @@ struct fixed {
 
 struct flex {
 	unsigned long flags;
-	size_t count;
+	long count;
 	int array[];
 };
 
 struct annotated {
 	unsigned long flags;
-	size_t count;
+	long count;
 	int array[] __counted_by(count);
 };
 
@@ -91,14 +92,14 @@ struct multi {
 	union {
 		/* count member type intentionally mismatched to induce padding */
 		DECLARE_BOUNDED_FLEX_ARRAY(int, count_bytes, unsigned char, bytes);
-		DECLARE_BOUNDED_FLEX_ARRAY(u8,  count_ints,  unsigned char, ints);
+		DECLARE_BOUNDED_FLEX_ARRAY(s8,  count_ints,  unsigned char, ints);
 		DECLARE_FLEX_ARRAY(unsigned char, unsafe);
 	};
 };
 
 struct anon_struct {
 	unsigned long flags;
-	size_t count;
+	long count;
 	int array[] __counted_by(count);
 	//gcc: DECLARE_FLEX_ARRAY_COUNTED_BY(int, array, count);
 };
@@ -438,6 +439,22 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_index, SIGILL)
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, array, negative_one, SHOULD_TRAP);
+}
+
+TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_bounds, SIGILL)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+	int negative_one = -1 + unconst;
+
+	p = alloc_annotated(index);
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, array, index - 1, SHOULD_NOT_TRAP);
+	p->count = -1;
+	TH_LOG("traps: array[%d] = 0xEE (when count == -1)", index - 1);
+	p->array[index - 1] = 0xEE;
+	TH_LOG("this should have been unreachable");
 }
 
 TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_ints, SIGILL)
