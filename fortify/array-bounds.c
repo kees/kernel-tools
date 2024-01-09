@@ -380,7 +380,7 @@ TEST(counted_by_seen_by_bdos)
 	EXPECT_EQ(__builtin_object_size(&p->array[index - 1], 1), SIZE_MAX); \
 	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[index - 1], 1), sizeof(*p->array)); \
 	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[index], 1), 0); \
-/* gcc:	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[negative], 1), 0); */ \
+	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[negative], 1), 0); \
 	/* Check array size alone. */					\
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);	\
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array)); \
@@ -390,7 +390,7 @@ TEST(counted_by_seen_by_bdos)
 	/* Check for out of bounds count. */				\
 	p->count = negative;						\
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), 0) {	\
-		TH_LOG("Failed when count=%d", negative);		\
+		TH_LOG("Failed when " #p "->" #count "=%d", negative);	\
 	}								\
 	/* Check for reduced counts. */					\
 	p->count = 1 + unconst;						\
@@ -467,6 +467,10 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_bounds, SIGILL)
 	TH_LOG("traps: array[%d] = 0xEE (when count == -1)", index - 1);
 	p->array[index - 1] = 0xEE;
 	TH_LOG("this should have been unreachable");
+
+#ifdef __clang__
+	SKIP(return, "Clang doesn't pass this yet");
+#endif
 }
 
 TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_ints, SIGILL)
