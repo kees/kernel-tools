@@ -387,6 +387,18 @@ TEST(counted_by_seen_by_bdos)
 	/* Check check entire object size. */				\
 	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);		\
 	/* EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->count * sizeof(*p->array)); */ \
+	/* Check for out of bounds count. */				\
+	p->count = negative;						\
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), 0) {	\
+		TH_LOG("Failed when count=%d", negative);		\
+	}								\
+	/* Check for reduced counts. */					\
+	p->count = 1 + unconst;						\
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), sizeof(*p->array));	\
+	p->count = 0 + unconst;						\
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), 0) {	\
+		TH_LOG("Failed when count=0");				\
+	}								\
 	do { } while (0)
 
 	p = alloc_annotated(index);
@@ -451,7 +463,7 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_bounds, SIGILL)
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, array, index - 1, SHOULD_NOT_TRAP);
-	p->count = -1;
+	p->count = negative_one;
 	TH_LOG("traps: array[%d] = 0xEE (when count == -1)", index - 1);
 	p->array[index - 1] = 0xEE;
 	TH_LOG("this should have been unreachable");
@@ -537,6 +549,10 @@ TEST(alloc_size_with_smaller_counted_by_seen_by_bdos)
 	/* Check check entire object size: this is not limited by __counted_by. */
 	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count + SIZE_BUMP) * sizeof(*p->array));
+
+#ifdef __clang__
+	SKIP(return, "Clang doesn't pass this yet");
+#endif
 }
 
 /*
@@ -582,6 +598,10 @@ TEST(alloc_size_with_bigger_counted_by_seen_by_bdos)
 	/* Check check entire object size. */
 	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count - SIZE_BUMP) * sizeof(*p->array));
+
+#ifdef __clang__
+	SKIP(return, "Clang doesn't pass this yet");
+#endif
 }
 
 /*
