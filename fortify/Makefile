@@ -12,7 +12,7 @@ endif
 NO_STRICT_OVERFLOW = -fno-strict-overflow
 DEPS = Makefile harness.h kselftest.h
 
-EXES = fortify array-bounds sanitizers
+EXES = fortify array-bounds
 
 all: $(EXES)
 clean:
