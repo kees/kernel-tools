@@ -36,19 +36,22 @@ do
 		# Handle delete
 		:
 	else
-		if test "$remote_oid" = "$zero"
+		# If we have a new branch, or if the remote HEAD is not an
+		# ancestor of the local HEAD, we're probably doing a --force,
+		# so we need to treat it as if we're pushing a new branch.
+		if test "$remote_oid" = "$zero" || \
+		   ! git merge-base --is-ancestor $remote_oid $local_oid
 		then
-			# New branch, examine all commits
-			range="$local_oid"
-
-			echo >&2 "pre-push: New branch... need to find a common base: $range"
-			# - find the common base branch point, based on unpushed base or a Linus rc, etc
+			# New branch, examine all commits since most recent tag.
+			since=$(git describe --tags --abbrev=0)
+			range="$since..$local_oid"
+			echo >&2 "pre-push: New branch. Checking $range"
 		else
 			# Update to existing branch, examine new commits
 			range="$remote_oid..$local_oid"
-			echo >&2 "pre-push: existing branch: $range"
-			~/bin/check_commits "$range"
+			echo >&2 "pre-push: Existing branch. Checking $range"
 		fi
+		~/bin/check_commits "$range"
 
 		## Check for WIP commit
 		#commit=$(git rev-list -n 1 --grep '^WIP\b' "$range")

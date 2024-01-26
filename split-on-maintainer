@@ -251,6 +251,7 @@ def get_ccs(diff_str, author):
 
 	ccs = subprocess.run(["./scripts/get_maintainer.pl", "--email",
 			      "--git-min-percent", "15",
+			      "--git-since", '3-years-ago',
 			      "--no-rolestats", patch.name],
 			     stdout=subprocess.PIPE,
 			     encoding='utf8').stdout.splitlines()
@@ -290,7 +291,7 @@ for area in output:
 	else:
 		email[area]['cc'].append('linux-kernel@vger.kernel.org')
 
-	ccs = email[area]['cc']
+	maintainer_ccs = email[area]['cc']
 
 	# There are some unwritten rules about top-level maintainers...
 	overrides = []
@@ -299,14 +300,15 @@ for area in output:
 		   path.startswith('drivers/misc/') or \
 		   path.startswith('drivers/usb/'):
 			overrides.append('Greg Kroah-Hartman <gregkh@linuxfoundation.org>')
-	if 'linux-mm@kvack.org' in ccs:
+	if 'linux-mm@kvack.org' in maintainer_ccs:
 		overrides.append('Andrew Morton <akpm@linux-foundation.org>')
 
 	tos = overrides
 	tos.extend(x for x in email[area]['maint'] if x not in overrides)
 
 	# Perform proper "get_maintainer.pl" expansion...
-	ccs.extend(x for x in get_ccs(output[area], who) if x not in tos and x not in ccs)
+	ccs = [x for x in get_ccs(output[area], who) if x not in tos]
+	ccs.extend(x for x in maintainer_ccs if x not in tos and x not in ccs)
 
 	# More unwritten rules for wireless...
 	if 'linux-wireless@vger.kernel.org,' in ccs:
@@ -341,13 +343,16 @@ for area in output:
 
 	print("\t\t\tSubject: %s" % (combined))
 
-	print("", file=out)
 	# Emit any log lines
 	if args.build_log:
+		print("", file=out)
 		for path in contains[area]:
 			print(logs[path], file=out)
 
-	print(sob.rstrip(), file=out)
+	tag_ccs = tos
+	tag_ccs.extend(x for x in ccs if x not in tos and x != "linux-kernel@vger.kernel.org")
+	print("Cc: %s" % ("\nCc: ".join(tag_ccs)), file=out)
+	print(sob.strip(), file=out)
 	print("---", file=out)
 	print(subprocess.run(["diffstat", "-p1"], stdout=subprocess.PIPE,
 			     input=output[area], encoding='utf8').stdout, file=out)
