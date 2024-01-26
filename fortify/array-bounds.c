@@ -13,6 +13,7 @@ typedef signed char s8;
 
 /* Used to stop optimizer from seeing constant expressions. */
 volatile int unconst = 0;
+volatile int debug = 0;
 
 /*
  * Used make sure allocations are seen as "escaping" the local function
@@ -25,16 +26,16 @@ volatile void *escape;
 	escape = p; \
 	if (__builtin_constant_p(bdos)) { \
 		if (bdos == SIZE_MAX) { \
-			TH_LOG(#p " has an unknown-to-bdos size"); \
+			if (debug) TH_LOG(#p " has an unknown-to-bdos size"); \
 		} else { \
-			TH_LOG(#p " has a fixed size: %zu (%zu elements of size %zu)", bdos, \
+			if (debug) TH_LOG(#p " has a fixed size: %zu (%zu elements of size %zu)", bdos, \
 				bdos / sizeof(*(p)), sizeof(*(p))); \
 		} \
 	} else { \
-		TH_LOG(#p " has a dynamic size: %zu (%zu elements of size %zu)", bdos, \
+		if (debug) TH_LOG(#p " has a dynamic size: %zu (%zu elements of size %zu)", bdos, \
 			bdos / sizeof(*(p)), sizeof(*(p))); \
 	} \
-	fflush(NULL); \
+	if (debug) fflush(NULL); \
 } while (0)
 
 #if __has_attribute(__counted_by__)
@@ -135,26 +136,26 @@ struct ptr_annotated {
 								\
 	/* Index zero is in the array. */			\
 	/*TH_LOG("array address: %p", (p)->array);*/		\
-	TH_LOG("safe: array[0] = 0xFF");			\
+	if (debug) TH_LOG("safe: array[0] = 0xFF");			\
 	(p)->array[0] = 0xFF;					\
 	ASSERT_EQ((p)->array[0], 0xFF);				\
 								\
 	if (index > 1) {					\
-		TH_LOG("safe: array[%d] = 0xFF", index - 1);	\
+		if (debug) TH_LOG("safe: array[%d] = 0xFF", index - 1);	\
 		(p)->array[index - 1] = 0xFF;			\
 		ASSERT_EQ((p)->array[index - 1], 0xFF);		\
 	}							\
 								\
 	if (enforcement == SHOULD_TRAP) {			\
 		/* "index" is expected to trap. */		\
-		TH_LOG("traps: array[%d] = 0xFF", index);	\
+		if (debug) TH_LOG("traps: array[%d] = 0xFF", index);	\
 	} else {						\
-		TH_LOG("ignored: array[%d] = 0xFF", index);	\
+		if (debug) TH_LOG("ignored: array[%d] = 0xFF", index);	\
 	}							\
 	(p)->array[index] = 0xFF;				\
 	if (enforcement == SHOULD_TRAP) {			\
 		/* Don't assert: test for lack of signal. */	\
-		TH_LOG("this should have been unreachable");	\
+		if (debug) TH_LOG("this should have been unreachable");	\
 	}							\
 } while (0)
 
@@ -464,7 +465,7 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_bounds, SIGILL)
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, array, index - 1, SHOULD_NOT_TRAP);
 	p->count = negative_one;
-	TH_LOG("traps: array[%d] = 0xEE (when count == -1)", index - 1);
+	if (debug) TH_LOG("traps: array[%d] = 0xEE (when count == -1)", index - 1);
 	p->array[index - 1] = 0xEE;
 	TH_LOG("this should have been unreachable");
 
@@ -555,7 +556,8 @@ TEST(alloc_size_with_smaller_counted_by_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count + SIZE_BUMP) * sizeof(*p->array));
 
 #ifdef __clang__
-	SKIP(return, "Clang doesn't pass this yet");
+	if (!_metadata->passed)
+		SKIP(return, "Clang doesn't pass this yet");
 #endif
 }
 
@@ -604,7 +606,8 @@ TEST(alloc_size_with_bigger_counted_by_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count - SIZE_BUMP) * sizeof(*p->array));
 
 #ifdef __clang__
-	SKIP(return, "Clang doesn't pass this yet");
+	if (!_metadata->passed)
+		SKIP(return, "Clang doesn't pass this yet");
 #endif
 }
 
