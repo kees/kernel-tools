@@ -21,6 +21,7 @@ if [ -z "$commits" ]; then
 fi
 
 echo "Checking $@ ..." >&2
+echo "    skip with __NO_PUSH_CHECKS=y" >&2
 
 "$(realpath "$(dirname "$0")")/check_fixes" "$@"
 
