@@ -1,12 +1,14 @@
-CFLAGS += -Wall -O2 -fstrict-flex-arrays=3 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -Wno-dangling-pointer
-ARRAY_SANITIZER = -fsanitize=bounds -fsanitize=object-size
+CFLAGS += -Wall -O2 -fstrict-flex-arrays=3 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3
 MATH_SANITIZER = -fsanitize=signed-integer-overflow -fsanitize=unsigned-integer-overflow -fsanitize=pointer-overflow
 TRUNCATION_SANITIZER = -fsanitize=implicit-unsigned-integer-truncation -fsanitize=implicit-signed-integer-truncation
 
 ifeq ($(findstring clang,$(CC)),clang)
 UBSAN_TRAP = -fsanitize-trap=all
+ARRAY_SANITIZER = -fsanitize=bounds
 else
 UBSAN_TRAP = -fsanitize-undefined-trap-on-error
+ARRAY_SANITIZER = -fsanitize=bounds-strict -fsanitize=object-size
+CFLAGS += -Wno-dangling-pointer
 endif
 
 NO_STRICT_OVERFLOW = -fno-strict-overflow
