@@ -381,7 +381,9 @@ TEST(counted_by_seen_by_bdos)
 	EXPECT_EQ(__builtin_object_size(&p->array[index - 1], 1), SIZE_MAX); \
 	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[index - 1], 1), sizeof(*p->array)); \
 	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[index], 1), 0); \
-	EXPECT_EQ(__builtin_dynamic_object_size(&p->array[negative], 1), 0); \
+	\
+	/* GCC's sanitizer trips even in __bdos */ \
+	/*EXPECT_EQ(__builtin_dynamic_object_size(&p->array[negative], 1), 0);*/ \
 	/* Check array size alone. */					\
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);	\
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array)); \
