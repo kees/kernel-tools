@@ -110,15 +110,6 @@ struct composite {
 	struct annotated inner;
 };
 
-#if 0
-struct count_self {
-	union {
-		unsigned long count;
-		DECLARE_FLEX_ARRAY_COUNTED_BY(unsigned long, array, count);
-	};
-};
-#endif
-
 /* Not supported yet. */
 #if 0
 struct ptr_annotated {
@@ -221,19 +212,6 @@ static struct composite * noinline alloc_composite(int index)
 
 	return p;
 }
-
-#if 0
-/* Helper to hide the allocation size by using a leaf function. */
-static struct count_self * noinline alloc_count_self(int index)
-{
-	struct count_self *p;
-
-	p = malloc(sizeof(*p) + index * sizeof(*p->array));
-	p->longs = (sizeof(*p) / sizeof(*p->array)) + index;
-
-	return p;
-}
-#endif
 
 /*
  * For a structure ending with a fixed-size array, sizeof(*p) should
@@ -367,9 +345,6 @@ TEST(counted_by_seen_by_bdos)
 	struct multi *m;
 	struct anon_struct *s;
 	struct composite *c;
-#if 0
-	struct count_self *c;
-#endif
 	int index = MAX_INDEX + unconst;
 	int negative = -3 + unconst;
 
@@ -469,11 +444,12 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_with_negative_bounds, SIGILL)
 	p->count = negative_one;
 	if (debug) TH_LOG("traps: array[%d] = 0xEE (when count == -1)", index - 1);
 	p->array[index - 1] = 0xEE;
-	TH_LOG("this should have been unreachable");
 
 #ifdef __clang__
-	SKIP(return, "Clang doesn't pass this yet");
+	XFAIL(return, "Clang doesn't pass this yet");
 #endif
+
+	TH_LOG("this should have been unreachable");
 }
 
 TEST_SIGNAL(counted_by_enforced_by_sanitizer_multi_ints, SIGILL)
@@ -520,19 +496,6 @@ TEST_SIGNAL(counted_by_enforced_by_sanitizer_composite, SIGILL)
 	TEST_ACCESS(c, inner.array, index, SHOULD_TRAP);
 }
 
-#if 0
-TEST_SIGNAL(counted_by_enforced_by_sanitizer_count_self, SIGILL)
-{
-	struct count_self *c;
-	int index = MAX_INDEX + unconst;
-
-	c = alloc_count_self(index);
-
-	REPORT_SIZE(c->array);
-	TEST_ACCESS(c, array, index + 1, SHOULD_TRAP);
-}
-#endif
-
 /*
  * When both __alloc_size and __counted_by are available to calculate
  * sizes, the smaller of the two should take precedence. Check that when
@@ -558,8 +521,11 @@ TEST(alloc_size_with_smaller_counted_by_seen_by_bdos)
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count + SIZE_BUMP) * sizeof(*p->array));
 
 #ifdef __clang__
-	if (!_metadata->passed)
-		SKIP(return, "Clang doesn't pass this yet");
+	/* This fails on Clang currently due to sub-object __bdos() bug. */
+	if (_metadata->passed)
+		TH_LOG("Unexpected pass!");
+	else
+		XFAIL(return, "Clang doesn't pass this yet");
 #endif
 }
 
@@ -607,10 +573,15 @@ TEST(alloc_size_with_bigger_counted_by_seen_by_bdos)
 	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
 	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + (p->count - SIZE_BUMP) * sizeof(*p->array));
 
-#ifdef __clang__
-	if (!_metadata->passed)
-		SKIP(return, "Clang doesn't pass this yet");
-#endif
+	/*
+	 * Both Clang and GCC prioritize counted_by above alloc_size.
+	 * If this is actually a bug, we'll need to very clearly define
+	 * how alloc_size and counted_by interact.
+	 */
+	if (_metadata->passed)
+		TH_LOG("Unexpected pass!");
+	else
+		XFAIL(/* */, "Not expected yet for GCC nor Clang");
 }
 
 /*
@@ -630,6 +601,55 @@ TEST_SIGNAL(alloc_size_with_bigger_counted_by_enforced_by_sanitizer, SIGILL)
 
 	REPORT_SIZE(p->array);
 	TEST_ACCESS(p, array, count, SHOULD_TRAP);
+
+#if !defined(__clang__)
+	XFAIL(return, "Not expected yet for GCC");
+#endif
+
+	TH_LOG("this should have been unreachable");
+}
+
+/*
+ * When both __alloc_size and __counted_by are available to calculate
+ * sizes, both GCC and Clang agree about taking alloc_size on an outer
+ * variable. Test that this is distinguished.
+ */
+TEST_SIGNAL(alloc_size_outside_counted_by, SIGILL)
+{
+	int count = MAX_INDEX + unconst;
+	struct annotated *p;
+	size_t bytes = sizeof(*p) + (count + SIZE_BUMP) * sizeof(*p->array);
+	void *whole;
+	u8 *b;
+
+	/* malloc() is marked with __attribute__((alloc_size(1))) */
+	p = whole = malloc(bytes);
+	p->count = count;
+	b = whole;
+
+	REPORT_SIZE(p->array);
+	TEST_ACCESS(p, array, count - 1, SHOULD_NOT_TRAP);
+
+	/* Check sizes */
+	EXPECT_EQ(sizeof(*p), offsetof(typeof(*p), array));
+	/* Check array size alone. */
+	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array));
+	/* Check check entire object size. */
+	EXPECT_EQ(__builtin_object_size(p, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(p, 1), sizeof(*p) + p->count * sizeof(*p->array));
+	/* Check whole allocation object size. */
+	EXPECT_EQ(__builtin_object_size(b, 1), SIZE_MAX);
+	EXPECT_EQ(__builtin_dynamic_object_size(b, 1), bytes);
+
+	/* Verify sanitizer */
+	memset(b, 0xAA, bytes);
+	EXPECT_EQ(b[bytes - 1], 0xAA);
+
+	/* This should trap. */
+	EXPECT_NE(b[bytes], 0xAA);
+
+	TH_LOG("this should have been unreachable");
 }
 
 #if 0
