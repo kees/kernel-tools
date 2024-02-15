@@ -1,5 +1,7 @@
 #!/bin/bash
 # Can this script be replaced with 'git interpret-trailers'?
+#
+# Usage: merge-before-sob PATCH FILES...
 set -e
 
 PATCH="$1"

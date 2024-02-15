@@ -1,0 +1,26 @@
+#!/bin/bash
+# Can this script be replaced with 'git interpret-trailers'?
+#
+# Usage: merge-after-cut PATCH FILES...
+set -e
+
+PATCH="$1"
+shift || true
+
+EMIT=
+LINE=$(grep -m1 -n "^---$" "$PATCH" | cut -d: -f1)
+if [ -z "$LINE" ]; then
+	LINE=9999
+	EMIT="---"
+fi
+TOP=$(mktemp -t merge-after-cut.top-XXXXXX)
+BOTTOM=$(mktemp -t merge-after-cut.bottom-XXXXXX)
+
+(head -$LINE > $TOP; cat > $BOTTOM) < "$PATCH"
+if [ -n "$EMIT" ]; then
+	echo "$EMIT" >> "$TOP"
+fi
+cp "$PATCH" "$PATCH".old
+cat $TOP "$@" $BOTTOM > "$PATCH"
+
+rm -f $TOP $BOTTOM

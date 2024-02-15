@@ -13,7 +13,7 @@ get-cc "$PATCH" | awk '{print "Cc: " $0}' > $PRE
 cat $PRE
 awk '!seen[$0]++' <(cat "$COMMIT_MSG_FILE" "$PRE" | grep '^Cc:') >$CC
 grep -v '^Cc:' "$COMMIT_MSG_FILE" > "$PRE"
-merge-before-sob "$PRE" $CC
+merge-after-cut "$PRE" $CC
 mv "$PRE" "$COMMIT_MSG_FILE"
 
 rm -f $CC
