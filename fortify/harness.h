@@ -100,8 +100,8 @@
  * ASSERT_* number for which the test failed.  This behavior can be enabled by
  * writing `_metadata->no_print = true;` before the check sequence that is
  * unable to print.  When an error occur, instead of printing an error message
- * and calling `abort(3)`, the test process call `_exit(2)` with the assert
- * number as argument, which is then printed by the parent process.
+ * and calling `abort(3)`, the test process call `_exit(2)` and pass the error
+ * to be printed to the parent process via shared memory.
  */
 #define TH_LOG(fmt, ...) do { \
 	if (TH_LOG_ENABLED) \
@@ -136,6 +136,33 @@
 	} \
 	_metadata->passed = 1; \
 	_metadata->skip = 1; \
+	_metadata->trigger = 0; \
+	statement; \
+} while (0)
+
+/**
+ * XFAIL()
+ *
+ * @statement: statement to run after reporting XFAIL
+ * @fmt: format string
+ * @...: optional arguments
+ *
+ * .. code-block:: c
+ *
+ *     XFAIL(statement, fmt, ...);
+ *
+ * This forces a "pass" after reporting why something is expected to fail,
+ * and runs "statement", which is usually "return" or "goto skip".
+ */
+#define XFAIL(statement, fmt, ...) do { \
+	snprintf(_metadata->results->reason, \
+		 sizeof(_metadata->results->reason), fmt, ##__VA_ARGS__); \
+	if (TH_LOG_ENABLED) { \
+		fprintf(TH_LOG_STREAM, "#      XFAIL     %s\n", \
+			_metadata->results->reason); \
+	} \
+	_metadata->passed = 1; \
+	_metadata->xfail = 1; \
 	_metadata->trigger = 0; \
 	statement; \
 } while (0)
@@ -694,9 +721,8 @@
 			__bail(_assert, _metadata))
 
 #define __INC_STEP(_metadata) \
-	/* Keep "step" below 255 (which is used for "SKIP" reporting). */	\
-	if (_metadata->passed && _metadata->step < 253) \
-		_metadata->step++;
+	if (_metadata->passed) \
+		_metadata->results->step++;
 
 #define is_signed_type(var)       (!!(((__typeof__(var))(-1)) < (__typeof__(var))1))
 
@@ -783,6 +809,7 @@
 
 struct __test_results {
 	char reason[1024];	/* Reason for test result */
+	unsigned int step;	/* Test step reached without failure */
 };
 
 struct __test_metadata;
@@ -833,10 +860,10 @@ struct __test_metadata {
 	int termsig;
 	int passed;
 	int skip;	/* did SKIP get used? */
+	int xfail;	/* did XFAIL get used? */
 	int trigger; /* extra handler after the evaluation */
 	int timeout;	/* seconds to wait for test timeout */
 	bool timed_out;	/* did this test timeout instead of exiting? */
-	__u8 step;
 	bool no_print; /* manual trigger when TH_LOG_STREAM is not available */
 	bool aborted;	/* stopped test due to failed ASSERT */
 	bool setup_completed; /* did setup finish? */
@@ -874,7 +901,7 @@ static inline void __test_check_assert(struct __test_metadata *t)
 {
 	if (t->aborted) {
 		if (t->no_print)
-			_exit(t->step);
+			_exit(KSFT_FAIL);
 		abort();
 	}
 }
@@ -937,10 +964,13 @@ void __wait_for_test(struct __test_metadata *t)
 		fprintf(TH_LOG_STREAM,
 			"# %s: Test terminated by timeout\n", t->name);
 	} else if (WIFEXITED(status)) {
-		if (WEXITSTATUS(status) == 255) {
+		if (WEXITSTATUS(status) == KSFT_SKIP) {
 			/* SKIP */
 			t->passed = 1;
 			t->skip = 1;
+		} else if (WEXITSTATUS(status) == KSFT_XFAIL) {
+			t->passed = 1;
+			t->xfail = 1;
 		} else if (t->termsig != -1) {
 			t->passed = 0;
 			fprintf(TH_LOG_STREAM,
@@ -950,7 +980,7 @@ void __wait_for_test(struct __test_metadata *t)
 		} else {
 			switch (WEXITSTATUS(status)) {
 			/* Success */
-			case 0:
+			case KSFT_PASS:
 				t->passed = 1;
 				break;
 			/* Other failure, assume step report. */
@@ -959,7 +989,7 @@ void __wait_for_test(struct __test_metadata *t)
 				fprintf(TH_LOG_STREAM,
 					"# %s: Test failed at step #%d\n",
 					t->name,
-					WEXITSTATUS(status));
+					t->results->step);
 			}
 		}
 	} else if (WIFSIGNALED(status)) {
@@ -1001,10 +1031,11 @@ void __run_test(struct __fixture_metadata *f,
 	/* reset test struct */
 	t->passed = 1;
 	t->skip = 0;
+	t->xfail = 0;
 	t->trigger = 0;
-	t->step = 1;
 	t->no_print = 0;
 	memset(t->results->reason, 0, sizeof(t->results->reason));
+	t->results->step = 1;
 
 	ksft_print_msg(" RUN           %s%s%s.%s ...\n",
 	       f->name, variant->name[0] ? "." : "", variant->name, t->name);
@@ -1021,12 +1052,13 @@ void __run_test(struct __fixture_metadata *f,
 		setpgrp();
 		t->fn(t, variant);
 		if (t->skip)
-			_exit(255);
-		/* Pass is exit 0 */
+			_exit(KSFT_SKIP);
+		if (t->xfail)
+			_exit(KSFT_XFAIL);
 		if (t->passed)
-			_exit(0);
-		/* Something else happened, report the step. */
-		_exit(t->step);
+			_exit(KSFT_PASS);
+		/* Something else happened. */
+		_exit(KSFT_FAIL);
 	} else {
 		__wait_for_test(t);
 	}
@@ -1038,6 +1070,9 @@ void __run_test(struct __fixture_metadata *f,
 	if (t->skip)
 		ksft_test_result_skip("%s\n", t->results->reason[0] ?
 					t->results->reason : "unknown");
+	else if (t->xfail)
+		ksft_test_result_xfail("%s\n", t->results->reason[0] ?
+				       t->results->reason : "unknown");
 	else
 		ksft_test_result(t->passed, "%s%s%s.%s\n",
 			f->name, variant->name[0] ? "." : "", variant->name, t->name);
