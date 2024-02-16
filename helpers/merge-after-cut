@@ -10,7 +10,7 @@ shift || true
 EMIT=
 LINE=$(grep -m1 -n "^---$" "$PATCH" | cut -d: -f1)
 if [ -z "$LINE" ]; then
-	LINE=9999
+	LINE=$(grep -Evn '^(#.*)?$' "$PATCH" | tail -n1 | cut -d: -f1)
 	EMIT="---"
 fi
 TOP=$(mktemp -t merge-after-cut.top-XXXXXX)
