@@ -1,10 +1,26 @@
 #!/bin/bash
+# Usage, get CCs for a file, stdin, or a sha
 set -e
+
+_PATCH=
+__cleanup() {
+	if [ -n "$_PATCH" ] ; then
+		rm -f "$_PATCH"
+	fi
+}
+trap __cleanup INT TERM EXIT
+_PATCH=$(mktemp -t get-cc-XXXXXX)
+
 if [ -z "$1" ] ; then
-	PATCH=$(mktemp -t get-cc-XXXXXX)
-	cat > "$PATCH"
+	cat > "$_PATCH"
+	PATCH="$_PATCH"
 else
-	PATCH="$1"
+	if [ -r "$1" ]; then
+		PATCH="$1"
+	else
+		git format-patch -1 --stdout "$1" > "$_PATCH"
+		PATCH="$_PATCH"
+	fi
 fi
 
 MYSELF=$(git config user.name)
@@ -14,8 +30,3 @@ MYSELF=$(git config user.name)
 	--git-since '3-years-ago' \
 	--no-rolestats \
 	"$PATCH" | grep -vE '^(linux-kernel@vger|'"$MYSELF"')'
-
-# Clean up
-if [ -z "$1" ] ; then
-	rm -f "$PATCH"
-fi
