@@ -320,3 +320,22 @@ identifier FUNC != {func1,func2};
 ```
 
 [ref](https://lore.kernel.org/cocci/alpine.DEB.2.21.1901170748520.2625@hadrien/)
+
+## Avoid matching files in a subdirectory
+
+Frequently when doing tree-wide C API transitions, we need to avoid the
+`tools/` and `samples/` directories, since they are build against userspace
+libraries and do no have the alternatives that are provided by the kernel.
+
+This can be done with the `file in` dependency in Coccinelle rules:
+
+```
+@scnprintf depends on !(file in "tools") && !(file in "samples")@
+@@
+
+-snprintf
++scnprintf
+ (...);
+```
+
+[ref](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2402192231180.3358@hadrien/)
