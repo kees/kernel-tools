@@ -8,7 +8,8 @@ grammar](https://coccinelle.gitlabpages.inria.fr/website/docs/index.html),
 I will ask for help on the [Coccinelle mailing
 list](https://coccinelle.gitlabpages.inria.fr/website/contact.html).
 I have started to collect those answers and my own discoveries here,
-since I frequently end up needing them again in the future.
+since I frequently end up needing them again in the future. Many great
+examples are also demonstrated in [this presentation](https://www.lrz.de/services/compute/courses/x_lecturenotes/hspc1w19.pdf).
 
 
 ## Run in parallel
