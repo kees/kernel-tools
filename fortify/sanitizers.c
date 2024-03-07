@@ -196,13 +196,41 @@ UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s16,   0)	\
 	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s32,   0)	\
 	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s64,   0)	\
-	/* TODO */
+	/* TODO */						\
+	UBSAN_COMMUT(sio, s32, s32, S32_MAX, add, s8,    3)	\
+	UBSAN_COMMUT(sio, s32, s32, S32_MAX, add, s16,   3)	\
+	UBSAN_COMMUT(sio, s32, s32, S32_MAX, add, s32,   3)	\
+	/*UBSAN_COMMUT(sio, s32, s32, S32_MAX, add, s64, 3) */	\
+	UBSAN_COMMUT(sio, s32, s32, S32_MAX, mul, s8,    2)	\
+	UBSAN_COMMUT(sio, s32, s32, S32_MAX, mul, s16,   2)	\
+	UBSAN_COMMUT(sio, s32, s32, S32_MAX, mul, s32,   2)	\
+	/*UBSAN_COMMUT(sio, s32, s32, S32_MAX, mul, s64,   2) */	\
+	UBSAN_TEST(sio, s32, s32, S32_MIN, sub, s8,    9)	\
+	UBSAN_TEST(sio, s32, s32, S32_MIN, sub, s16,   9)	\
+	UBSAN_TEST(sio, s32, s32, S32_MIN, sub, s32,   9)	\
+	/*UBSAN_TEST(sio, s32, s32, S32_MIN, sub, s64,   9) */	\
 
 #define LVALUE_S64_TESTS	/* TODO */
 
 #define LVALUE_U8_TESTS		/* TODO */
+
 #define LVALUE_U16_TESTS	/* TODO */
-#define LVALUE_U32_TESTS	/* TODO */
+
+#define LVALUE_U32_TESTS		\
+	/* TODO */						\
+	UBSAN_COMMUT(uio, u32, u32, U32_MAX, add, u8,    3)	\
+	UBSAN_COMMUT(uio, u32, u32, U32_MAX, add, u16,   3)	\
+	UBSAN_COMMUT(uio, u32, u32, U32_MAX, add, u32,   3)	\
+	/*UBSAN_COMMUT(uio, u32, u32, U32_MAX, add, u64,   3)*/	\
+	UBSAN_COMMUT(uio, u32, u32, U32_MAX, mul, u8,    2)	\
+	UBSAN_COMMUT(uio, u32, u32, U32_MAX, mul, u16,   2)	\
+	UBSAN_COMMUT(uio, u32, u32, U32_MAX, mul, u32,   2)	\
+	/*UBSAN_COMMUT(uio, u32, u32, U32_MAX, mul, u64,   2)*/	\
+	UBSAN_TEST(uio, u32, u32, 0, sub, u8,    9)	\
+	UBSAN_TEST(uio, u32, u32, 0, sub, u16,   9)	\
+	UBSAN_TEST(uio, u32, u32, 0, sub, u32,   9)	\
+	/*UBSAN_TEST(uio, u32, u32, 0, sub, u64,   9)*/	\
+
 #define LVALUE_U64_TESTS	/* TODO */
 
 #define LVALUE_PTR_TESTS		\
