@@ -18,6 +18,7 @@ ARGS=$(make coccicheck V=1 MODE=patch COCCI=/dev/null 2>&1 | \
         grep ^Running | \
         awk -F"/spatch " '{print $2}' | \
         sed     \
+		-e 's/\.\./\./g' \
                 -e 's/-D patch //' \
                 -e 's/--dir \. //' \
                 -e 's/--cocci-file \/dev\/null //' \
