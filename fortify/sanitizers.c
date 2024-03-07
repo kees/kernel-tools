@@ -16,6 +16,7 @@ typedef unsigned int	   u32;
 typedef int		   s32;
 typedef unsigned long long u64;
 typedef long long	   s64;
+typedef void *		   ptr;
 
 #define U8_MAX		((u8)~0U)
 #define S8_MAX		((s8)(U8_MAX>>1))
@@ -50,6 +51,8 @@ typedef long long	   s64;
 #define FMTu32			"%u"
 #define FMTu64			"%llu"
 
+#define FMTptr			"%p"
+
 #define fmt(type)		FMT ## type
 
 #define	OPERadd			+
@@ -83,6 +86,9 @@ volatile int debug = 0;
 				no_sio no_uio no_po no_iuit
 #define UBSAN_CHECK_iuit(x...)	TEST_SIGNAL(x, SIGILL)	\
 				no_sio no_uio no_po no_isit
+#define UBSAN_CHECK_none(x...)	TEST_SIGNAL(x, SIGILL) \
+				no_sio no_uio no_po no_isit no_iuit
+#define UBSAN_CHECK_any(x...)	TEST_SIGNAL(x, SIGILL)
 #define UBSAN_CHECK_test(x...)	TEST(x)
 
 #define REPORT_sio(x...)	TH_LOG(x)
@@ -90,15 +96,27 @@ volatile int debug = 0;
 #define REPORT_po(x...)		TH_LOG(x)
 #define REPORT_isit(x...)	TH_LOG(x)
 #define REPORT_iuit(x...)	TH_LOG(x)
-#define REPORT_test(x...)	do { } while (0)
+#define REPORT_none(x...)	TH_LOG(x)
+#define REPORT_any(x...)	TH_LOG(x)
+#define REPORT_test(x...)	if (debug) TH_LOG(x)
+
+/* We cannot touch a NULL pointer at all, even by 0. */
+#define UNCONST_sio(x...)	(x) + unconst
+#define UNCONST_uio(x...)	(x) + unconst
+#define UNCONST_po(x...)	(x)
+#define UNCONST_isit(x...)	(x) + unconst
+#define UNCONST_iuit(x...)	(x) + unconst
+#define UNCONST_none(x...)	(x) + unconst
+#define UNCONST_any(x...)	(x) + unconst
+#define UNCONST_test(x...)	(x) + unconst
 
 /* Not sure how to get decent test names generated... */
 #define UBSAN_TEST(how, t0, t1, t1_init, op, t2, t2_init)		\
 UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 {									\
 	t0 result;							\
-	t1 var = (t1_init) + unconst;					\
-	t2 offset = (t2_init) + unconst;				\
+	t1 var = UNCONST_ ## how(t1_init);				\
+	t2 offset = UNCONST_ ## how(t2_init);				\
 									\
 	/* Since test names are trash, always display operation. */	\
 	TH_LOG(" " #t0 " = " #t1 "(" fmt(t1) ") " oper_name(op) " " #t2 "(" fmt(t2) ")", var, offset); \
@@ -178,12 +196,41 @@ UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s16,   0)	\
 	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s32,   0)	\
 	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s64,   0)	\
+	/* TODO */
+
+#define LVALUE_S64_TESTS	/* TODO */
+
+#define LVALUE_U8_TESTS		/* TODO */
+#define LVALUE_U16_TESTS	/* TODO */
+#define LVALUE_U32_TESTS	/* TODO */
+#define LVALUE_U64_TESTS	/* TODO */
+
+#define LVALUE_PTR_TESTS		\
+	/* All within normal pointer ranges. */			\
+	UBSAN_TEST(test, ptr, ptr, (void *)1, add, s32, 100)	\
+	UBSAN_TEST(test, ptr, ptr, (void *)100, sub, s32, 50)	\
+	UBSAN_TEST(test, ptr, ptr, (void *)(100), add, s32, INT_MAX / 2) \
+	UBSAN_TEST(test, ptr, ptr, (void *)(-1), sub, s32, INT_MAX / 2)	\
+	/* Operating on NULL should trap. (Even 0 ?!) */	\
+	UBSAN_TEST(po, ptr, ptr, NULL, add, s32, 0)		\
+	UBSAN_TEST(po, ptr, ptr, NULL, sub, s32, 0)		\
+	UBSAN_TEST(po, ptr, ptr, NULL, add, s32, 10)		\
+	UBSAN_TEST(po, ptr, ptr, NULL, sub, s32, 10)		\
+	/* Overflow and underflow should trap. */		\
+	UBSAN_TEST(po, ptr, ptr, (void *)(-1), add, s32, 2)	\
+	UBSAN_TEST(po, ptr, ptr, (void *)1, sub, s32, 2)	\
 
 
 #define UBSAN_TESTS		\
 	LVALUE_S8_TESTS		\
 	LVALUE_S16_TESTS	\
 	LVALUE_S32_TESTS	\
+	LVALUE_S64_TESTS	\
+	LVALUE_U8_TESTS		\
+	LVALUE_U16_TESTS	\
+	LVALUE_U32_TESTS	\
+	LVALUE_U64_TESTS	\
+	LVALUE_PTR_TESTS
 
 UBSAN_TESTS
 
