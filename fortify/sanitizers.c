@@ -38,7 +38,7 @@ typedef long long	   s64;
 #define ___PASTE(a,b) a##b
 #define __PASTE(a,b) ___PASTE(a,b)
 
-#define __UNIQUE_ID(prefix) __PASTE(__PASTE(__UNIQUE_ID_, prefix), __COUNTER__)
+#define __UNIQUE_ID(prefix) __PASTE(__PASTE(prefix, _), __COUNTER__)
 
 #define FMTs8			"%d"
 #define FMTs16			"%d"
@@ -66,33 +66,41 @@ typedef long long	   s64;
 volatile int unconst = 0;
 volatile int debug = 0;
 
-/*
- * For now, skip all the tests that are expected to not trap, so
- * we can more easily manually distinguish the different sanitizers
- * that are needed for a given set of tests to pass.
- *
- * What's really needed is a way to run this same source file but
- * build it with various sanitizers...
- */
-#define MAYBE_SKIP_OKAY()	SKIP(return,"don't test passing states")
-#define MAYBE_SKIP_TRAP()	/* */
+#define no_sio		__attribute__((no_sanitize("signed-integer-overflow")))
+#define no_uio		__attribute__((no_sanitize("unsigned-integer-overflow")))
+#define no_po		__attribute__((no_sanitize("pointer-overflow")))
+#define no_isit		__attribute__((no_sanitize("implicit-signed-integer-truncation")))
+#define no_iuit		__attribute__((no_sanitize("implicit-unsigned-integer-truncation")))
 
-#define REPORT_OKAY(x...)	if (debug) TH_LOG(x)
-#define REPORT_TRAP(x...)	TH_LOG(x)
+/* To test a single sanitizer, disable all the others. */
+#define UBSAN_CHECK_sio(x...)	TEST_SIGNAL(x, SIGILL)	\
+				no_uio no_po no_isit no_iuit
+#define UBSAN_CHECK_uio(x...)	TEST_SIGNAL(x, SIGILL)	\
+				no_sio no_po no_isit no_iuit
+#define UBSAN_CHECK_po(x...)	TEST_SIGNAL(x, SIGILL)	\
+				no_sio no_uio no_isit no_iuit
+#define UBSAN_CHECK_isit(x...)	TEST_SIGNAL(x, SIGILL)	\
+				no_sio no_uio no_po no_iuit
+#define UBSAN_CHECK_iuit(x...)	TEST_SIGNAL(x, SIGILL)	\
+				no_sio no_uio no_po no_isit
+#define UBSAN_CHECK_test(x...)	TEST(x)
 
-#define UBSAN_CHECK_OKAY(x...)	TEST(x)
-#define UBSAN_CHECK_TRAP(x...)	TEST_SIGNAL(x, SIGILL)
+#define REPORT_sio(x...)	TH_LOG(x)
+#define REPORT_uio(x...)	TH_LOG(x)
+#define REPORT_po(x...)		TH_LOG(x)
+#define REPORT_isit(x...)	TH_LOG(x)
+#define REPORT_iuit(x...)	TH_LOG(x)
+#define REPORT_test(x...)	do { } while (0)
 
 /* Not sure how to get decent test names generated... */
 #define UBSAN_TEST(how, t0, t1, t1_init, op, t2, t2_init)		\
-UBSAN_CHECK_ ## how(__UNIQUE_ID(sanitize))				\
+UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 {									\
 	t0 result;							\
 	t1 var = (t1_init) + unconst;					\
 	t2 offset = (t2_init) + unconst;				\
 									\
-	MAYBE_SKIP_ ## how();						\
-	/* Since test names are trash, dump the operation here. */	\
+	/* Since test names are trash, always display operation. */	\
 	TH_LOG(" " #t0 " = " #t1 "(" fmt(t1) ") " oper_name(op) " " #t2 "(" fmt(t2) ")", var, offset); \
 									\
 	result = var oper(op) offset;					\
@@ -106,71 +114,70 @@ UBSAN_CHECK_ ## how(__UNIQUE_ID(sanitize))				\
 
 #define LVALUE_S8_TESTS		\
 	/* Something plus nothing, not gonna trap. */		\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, add, s8,       0)	\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, add, s16,      0)	\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, add, s32,      0)	\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, add, s64,      0)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s8,       0)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s16,      0)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s32,      0)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s64,      0)	\
 	/* Something times 1, not gonna trap. */		\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, mul, s8,       1)	\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, mul, s16,      1)	\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, mul, s32,      1)	\
-	UBSAN_COMMUT(OKAY, s8, s8, S8_MAX, mul, s64,      1)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s8,       1)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s16,      1)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s32,      1)	\
+	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s64,      1)	\
 	/* These all all exceed S8_MAX, but don't exceed the s32 int promotion. */\
 	/* -fsanitize=implicit-signed-integer-truncation */	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, add, s8,       3)	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, add, s16,      3)	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, add, s32,      3)	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, add, s64,      3)	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, mul, s8,       2)	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, mul, s16,      2)	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, mul, s32,      2)	\
-	UBSAN_COMMUT(TRAP, s8, s8, S8_MAX, mul, s64,      2)
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, add, s8,       3)	\
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, add, s16,      3)	\
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, add, s32,      3)	\
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, add, s64,      3)	\
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, mul, s8,       2)	\
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, mul, s16,      2)	\
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, mul, s32,      2)	\
+	UBSAN_COMMUT(isit, s8, s8, S8_MAX, mul, s64,      2)
 
 #define LVALUE_S16_TESTS		\
 	/* Something plus nothing, not gonna trap. */		\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, add, s8,      0)	\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, add, s16,     0)	\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, add, s32,     0)	\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, add, s64,     0)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, add, s8,    0)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, add, s16,   0)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, add, s32,   0)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, add, s64,   0)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s8,      0)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s16,     0)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s32,     0)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s64,     0)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s8,    0)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s16,   0)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s32,   0)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s64,   0)	\
 	/* Something times 1, not gonna trap. */		\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, mul, s8,      1)	\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, mul, s16,     1)	\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, mul, s32,     1)	\
-	UBSAN_COMMUT(OKAY, s16, s8, S8_MAX, mul, s64,     1)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, mul, s8,    1)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, mul, s16,   1)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, mul, s32,   1)	\
-	UBSAN_COMMUT(OKAY, s16, s16, S16_MAX, mul, s64,   1)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s8,      1)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s16,     1)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s32,     1)	\
+	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s64,     1)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s8,    1)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s16,   1)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s32,   1)	\
+	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s64,   1)	\
 	/* These all all exceed S16_MAX, but don't exceed the s32 int promotion. */\
 	/* -fsanitize=implicit-signed-integer-truncation */	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, add, s8,    3)	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, add, s16,   3)	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, add, s32,   3)	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, add, s64,   3)	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, mul, s8,    2)	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, mul, s16,   2)	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, mul, s32,   2)	\
-	UBSAN_COMMUT(TRAP, s16, s16, S16_MAX, mul, s64,   2)
-
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, add, s8,    3)	\
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, add, s16,   3)	\
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, add, s32,   3)	\
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, add, s64,   3)	\
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, mul, s8,    2)	\
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, mul, s16,   2)	\
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, mul, s32,   2)	\
+	UBSAN_COMMUT(isit, s16, s16, S16_MAX, mul, s64,   2)
 
 #define LVALUE_S32_TESTS		\
 	/* Something plus nothing, not gonna trap. */		\
-	UBSAN_COMMUT(OKAY, s32, s8, S8_MAX, add, s8,      0)	\
-	UBSAN_COMMUT(OKAY, s32, s8, S8_MAX, add, s16,     0)	\
-	UBSAN_COMMUT(OKAY, s32, s8, S8_MAX, add, s32,     0)	\
-	UBSAN_COMMUT(OKAY, s32, s8, S8_MAX, add, s64,     0)	\
-	UBSAN_COMMUT(OKAY, s32, s16, S16_MAX, add, s8,    0)	\
-	UBSAN_COMMUT(OKAY, s32, s16, S16_MAX, add, s16,   0)	\
-	UBSAN_COMMUT(OKAY, s32, s16, S16_MAX, add, s32,   0)	\
-	UBSAN_COMMUT(OKAY, s32, s16, S16_MAX, add, s64,   0)	\
-	UBSAN_COMMUT(OKAY, s32, s32, S32_MAX, add, s8,    0)	\
-	UBSAN_COMMUT(OKAY, s32, s32, S32_MAX, add, s16,   0)	\
-	UBSAN_COMMUT(OKAY, s32, s32, S32_MAX, add, s32,   0)	\
-	UBSAN_COMMUT(OKAY, s32, s32, S32_MAX, add, s64,   0)	\
+	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s8,      0)	\
+	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s16,     0)	\
+	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s32,     0)	\
+	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s64,     0)	\
+	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s8,    0)	\
+	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s16,   0)	\
+	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s32,   0)	\
+	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s64,   0)	\
+	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s8,    0)	\
+	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s16,   0)	\
+	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s32,   0)	\
+	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s64,   0)	\
 
 
 #define UBSAN_TESTS		\
