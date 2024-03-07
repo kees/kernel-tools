@@ -1,6 +1,11 @@
 CFLAGS += -Wall -O2 -fstrict-flex-arrays=3 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3
-MATH_SANITIZER = -fsanitize=signed-integer-overflow -fsanitize=unsigned-integer-overflow -fsanitize=pointer-overflow
-TRUNCATION_SANITIZER = -fsanitize=implicit-unsigned-integer-truncation -fsanitize=implicit-signed-integer-truncation
+MATH_SANITIZER =	\
+	-fsanitize=signed-integer-overflow \
+	-fsanitize=unsigned-integer-overflow \
+	-fsanitize=pointer-overflow
+TRUNCATION_SANITIZER =	\
+	-fsanitize=implicit-signed-integer-truncation \
+	-fsanitize=implicit-unsigned-integer-truncation
 
 ifeq ($(findstring clang,$(CC)),clang)
 UBSAN_TRAP = -fsanitize-trap=all
