@@ -394,11 +394,6 @@ TEST(counted_by_seen_by_bdos)
 	c = alloc_composite(index);
 	CHECK(c, inner.array, inner.count);
 
-#if 0
-	c = alloc_count_self(index);
-	CHECK(c, array, count);
-#endif
-
 #undef CHECK
 }
 
