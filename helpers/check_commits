@@ -7,12 +7,14 @@ if [ "${__NO_PUSH_CHECKS}" = "y" ]; then
 	exit 0
 fi
 
-if [ "$#" -lt 1 ]; then
-	printf 'Usage: %s <commit range>\n' "$0" 1>&2
+if [ "$#" -lt 2 ]; then
+	printf 'Usage: %s [branch] <commit range>\n' "$0" 1>&2
 	exit 1
 fi
 
 rc=0
+
+branch="$1" ; shift
 
 commits=$(git rev-list --no-merges "$@")
 if [ -z "$commits" ]; then
@@ -97,7 +99,9 @@ done
 
 print_commits 'Signed-off-by' 'author' "${author_missing[@]}"
 print_commits 'Signed-off-by' 'committer' "${committer_missing[@]}"
-print_commits 'removal of ---' 'commit log' "${sep_exists[@]}"
+if [ "${branch%%/*}" = "for-next" ]; then
+	print_commits 'removal of ---' 'commit log in a for-next push' "${sep_exists[@]}"
+fi
 
 if [ "$rc" -ne 0 ] ; then
 	echo "Set __NO_PUSH_CHECKS=y to skip..." >&2
