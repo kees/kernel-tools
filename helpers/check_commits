@@ -25,17 +25,18 @@ echo "    skip with __NO_PUSH_CHECKS=y" >&2
 
 "$(realpath "$(dirname "$0")")/check_fixes" "$@"
 
-declare -a author_missing committer_missing
+declare -a author_missing committer_missing sep_exists
 
 print_commits()
 {
-	if [ "$#" -eq 1 ]; then
+	if [ "$#" -eq 2 ]; then
 		return
 	fi
 
-	local t="$1"
+	local what="$1"
+	local t="$2"
 
-	shift
+	shift ; shift
 
 	s=
 	is='is'
@@ -47,8 +48,8 @@ print_commits()
 	fi
 	printf 'Commit%s\n\n' "$s"
 	git log --no-walk --pretty='format:  %h ("%s")' "$@"
-	printf '\n%s missing a Signed-off-by from %s %s%s.\n\n' \
-		"$is" "$its" "$t" "$s"
+	printf '\n%s missing a %s from %s %s%s.\n\n' \
+		"$is" "$what" "$its" "$t" "$s"
 	rc=1
 }
 
@@ -78,8 +79,8 @@ check_unexpected_files()
 for c in $commits; do
 	ae=$(git log -1 --format='<%ae>%n<%aE>%n %an %n %aN ' "$c" | sort -u)
 	ce=$(git log -1 --format='<%ce>%n<%cE>%n %cn %n %cN ' "$c" | sort -u)
-	sob=$(git log -1 --format='%b' "$c" |
-		sed -En 's/^\s*Signed-off-by:?\s*/ /ip')
+	body=$(git log -1 --format='%b' "$c")
+	sob=$(echo "$body" | sed -En 's/^\s*Signed-off-by:?\s*/ /ip')
 
 	if ! grep -i -F -q "$ae" <<<"$sob"; then
 		author_missing+=("$c")
@@ -87,12 +88,16 @@ for c in $commits; do
 	if ! grep -i -F -q "$ce" <<<"$sob"; then
 		committer_missing+=("$c")
 	fi
+	if grep -q "^---$" <<<"$body"; then
+		sep_exists+=("$c")
+	fi
 
 	check_unexpected_files "$c"
 done
 
-print_commits 'author' "${author_missing[@]}"
-print_commits 'committer' "${committer_missing[@]}"
+print_commits 'Signed-off-by' 'author' "${author_missing[@]}"
+print_commits 'Signed-off-by' 'committer' "${committer_missing[@]}"
+print_commits 'removal of ---' 'commit log' "${sep_exists[@]}"
 
 if [ "$rc" -ne 0 ] ; then
 	echo "Set __NO_PUSH_CHECKS=y to skip..." >&2
