@@ -33,6 +33,14 @@ typedef void *		   ptr;
 
 #define noinline __attribute__((__noinline__))
 
+#if __has_attribute(wraps)
+# define __wraps		__attribute__((wraps))
+# define CHECK_WRAPS_ATTR	true
+#else
+# define __wraps		/**/
+# define CHECK_WRAPS_ATTR	false
+#endif
+
 #define __stringify_1(x...)     #x
 #define __stringify(x...)       __stringify_1(x)
 
@@ -76,20 +84,36 @@ volatile int debug = 0;
 #define no_iuit		__attribute__((no_sanitize("implicit-unsigned-integer-truncation")))
 
 /* To test a single sanitizer, disable all the others. */
-#define UBSAN_CHECK_sio(x...)	TEST_SIGNAL(x, SIGILL)	\
-				no_uio no_po no_isit no_iuit
-#define UBSAN_CHECK_uio(x...)	TEST_SIGNAL(x, SIGILL)	\
-				no_sio no_po no_isit no_iuit
-#define UBSAN_CHECK_po(x...)	TEST_SIGNAL(x, SIGILL)	\
-				no_sio no_uio no_isit no_iuit
-#define UBSAN_CHECK_isit(x...)	TEST_SIGNAL(x, SIGILL)	\
-				no_sio no_uio no_po no_iuit
-#define UBSAN_CHECK_iuit(x...)	TEST_SIGNAL(x, SIGILL)	\
-				no_sio no_uio no_po no_isit
-#define UBSAN_CHECK_none(x...)	TEST_SIGNAL(x, SIGILL) \
-				no_sio no_uio no_po no_isit no_iuit
-#define UBSAN_CHECK_any(x...)	TEST_SIGNAL(x, SIGILL)
-#define UBSAN_CHECK_test(x...)	TEST(x)
+#define UBSAN_trap_CHECK_sio(x...)	TEST_SIGNAL(x, SIGILL)	\
+					no_uio no_po no_isit no_iuit
+#define UBSAN_trap_CHECK_uio(x...)	TEST_SIGNAL(x, SIGILL)	\
+					no_sio no_po no_isit no_iuit
+#define UBSAN_trap_CHECK_po(x...)	TEST_SIGNAL(x, SIGILL)	\
+					no_sio no_uio no_isit no_iuit
+#define UBSAN_trap_CHECK_isit(x...)	TEST_SIGNAL(x, SIGILL)	\
+					no_sio no_uio no_po no_iuit
+#define UBSAN_trap_CHECK_iuit(x...)	TEST_SIGNAL(x, SIGILL)	\
+					no_sio no_uio no_po no_isit
+#define UBSAN_trap_CHECK_none(x...)	TEST_SIGNAL(x, SIGILL) \
+					no_sio no_uio no_po no_isit no_iuit
+#define UBSAN_trap_CHECK_any(x...)	TEST_SIGNAL(x, SIGILL)
+#define UBSAN_trap_CHECK_survive(x...)	TEST(x)
+
+/* Check that with a sanitizer enabled, there is no trap. */
+#define UBSAN_survive_CHECK_sio(x...)	TEST(x)	\
+					no_uio no_po no_isit no_iuit
+#define UBSAN_survive_CHECK_uio(x...)	TEST(x)	\
+					no_sio no_po no_isit no_iuit
+#define UBSAN_survive_CHECK_po(x...)	TEST(x)	\
+					no_sio no_uio no_isit no_iuit
+#define UBSAN_survive_CHECK_isit(x...)	TEST(x)	\
+					no_sio no_uio no_po no_iuit
+#define UBSAN_survive_CHECK_iuit(x...)	TEST(x)	\
+					no_sio no_uio no_po no_isit
+#define UBSAN_survive_CHECK_none(x...)	TEST(x) \
+					no_sio no_uio no_po no_isit no_iuit
+#define UBSAN_survive_CHECK_any(x...)	TEST(x)
+#define UBSAN_survive_CHECK_survive(x...) TEST(x)
 
 #define REPORT_sio(x...)	TH_LOG(x)
 #define REPORT_uio(x...)	TH_LOG(x)
@@ -98,7 +122,7 @@ volatile int debug = 0;
 #define REPORT_iuit(x...)	TH_LOG(x)
 #define REPORT_none(x...)	TH_LOG(x)
 #define REPORT_any(x...)	TH_LOG(x)
-#define REPORT_test(x...)	if (debug) TH_LOG(x)
+#define REPORT_survive(x...)	if (debug) TH_LOG(x)
 
 /* We cannot touch a NULL pointer at all, even by 0. */
 #define UNCONST_sio(x...)	(x) + unconst
@@ -108,22 +132,50 @@ volatile int debug = 0;
 #define UNCONST_iuit(x...)	(x) + unconst
 #define UNCONST_none(x...)	(x) + unconst
 #define UNCONST_any(x...)	(x) + unconst
-#define UNCONST_test(x...)	(x) + unconst
+#define UNCONST_survive(x...)	(x) + unconst
 
 /* Not sure how to get decent test names generated... */
-#define UBSAN_TEST(how, t0, t1, t1_init, op, t2, t2_init)		\
-UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
+#define UBSAN_trap_TEST(how, t0, t1, t1_init, op, t2, t2_init)		\
+UBSAN_trap_CHECK_ ## how(__UNIQUE_ID(how))				\
 {									\
 	t0 result;							\
 	t1 var = UNCONST_ ## how(t1_init);				\
 	t2 offset = UNCONST_ ## how(t2_init);				\
 									\
 	/* Since test names are trash, always display operation. */	\
-	TH_LOG(" " #t0 " = " #t1 "(" fmt(t1) ") " oper_name(op) " " #t2 "(" fmt(t2) ")", var, offset); \
+	TH_LOG(" (expected to trap) " #t0 " = " #t1 "(" fmt(t1) ") " oper_name(op) " " #t2 "(" fmt(t2) ")", var, offset); \
 									\
 	result = var oper(op) offset;					\
 	REPORT_ ## how("Unexpectedly survived " #t0 " = " #t1 "(" fmt(t1) ") " oper_name(op) " " #t2 "(" fmt(t2) "): " fmt(t0), var, offset, result); \
 }
+
+#define UBSAN_survive_TEST(how, t0, t1, t1_init, op, t2, t2_init)	\
+UBSAN_survive_CHECK_ ## how(__UNIQUE_ID(how))				\
+{									\
+	t0 result;							\
+	t1 var = UNCONST_ ## how(t1_init);				\
+	t2 offset = UNCONST_ ## how(t2_init);				\
+	t1 var_wrap __wraps = UNCONST_ ## how(t1_init);			\
+	t2 offset_wrap __wraps = UNCONST_ ## how(t2_init);		\
+									\
+	if (!CHECK_WRAPS_ATTR)						\
+		SKIP(return, "'wraps' attribute not supported");	\
+									\
+	/* Since test names are trash, always display operation. */	\
+	TH_LOG(" (no trap: wrapping expected) " #t0 " = " #t1 "(" fmt(t1) ") " oper_name(op) " " #t2 "(" fmt(t2) ")", var, offset); \
+									\
+	/* All of these should be survivable. */			\
+	result = var_wrap oper(op) offset_wrap;				\
+	EXPECT_TRUE(true) { TH_LOG(fmt(t0), result); }			\
+	result = var_wrap oper(op) offset;				\
+	EXPECT_TRUE(true) { TH_LOG(fmt(t0), result); }			\
+	result = var oper(op) offset_wrap;				\
+	EXPECT_TRUE(true) { TH_LOG(fmt(t0), result); }			\
+}
+
+#define UBSAN_TEST(how, t0, t1, t1_init, op, t2, t2_init)		\
+	UBSAN_trap_TEST(how, t0, t1, t1_init, op, t2, t2_init)		\
+	UBSAN_survive_TEST(how, t0, t1, t1_init, op, t2, t2_init)
 
 /* Test a commutative operation (add, mul) */
 #define UBSAN_COMMUT(how, t0, t1, t1_init, op, t2, t2_init)	\
@@ -132,15 +184,15 @@ UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 
 #define LVALUE_S8_TESTS		\
 	/* Something plus nothing, not gonna trap. */		\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s8,       0)	\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s16,      0)	\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s32,      0)	\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, add, s64,      0)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, add, s8,       0)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, add, s16,      0)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, add, s32,      0)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, add, s64,      0)	\
 	/* Something times 1, not gonna trap. */		\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s8,       1)	\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s16,      1)	\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s32,      1)	\
-	UBSAN_COMMUT(test, s8, s8, S8_MAX, mul, s64,      1)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, mul, s8,       1)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, mul, s16,      1)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, mul, s32,      1)	\
+	UBSAN_COMMUT(survive, s8, s8, S8_MAX, mul, s64,      1)	\
 	/* These all all exceed S8_MAX, but don't exceed the s32 int promotion. */\
 	/* -fsanitize=implicit-signed-integer-truncation */	\
 	UBSAN_COMMUT(isit, s8, s8, S8_MAX, add, s8,       3)	\
@@ -154,23 +206,23 @@ UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 
 #define LVALUE_S16_TESTS		\
 	/* Something plus nothing, not gonna trap. */		\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s8,      0)	\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s16,     0)	\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s32,     0)	\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, add, s64,     0)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s8,    0)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s16,   0)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s32,   0)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, add, s64,   0)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, add, s8,      0)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, add, s16,     0)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, add, s32,     0)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, add, s64,     0)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, add, s8,    0)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, add, s16,   0)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, add, s32,   0)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, add, s64,   0)	\
 	/* Something times 1, not gonna trap. */		\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s8,      1)	\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s16,     1)	\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s32,     1)	\
-	UBSAN_COMMUT(test, s16, s8, S8_MAX, mul, s64,     1)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s8,    1)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s16,   1)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s32,   1)	\
-	UBSAN_COMMUT(test, s16, s16, S16_MAX, mul, s64,   1)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, mul, s8,      1)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, mul, s16,     1)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, mul, s32,     1)	\
+	UBSAN_COMMUT(survive, s16, s8, S8_MAX, mul, s64,     1)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, mul, s8,    1)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, mul, s16,   1)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, mul, s32,   1)	\
+	UBSAN_COMMUT(survive, s16, s16, S16_MAX, mul, s64,   1)	\
 	/* These all all exceed S16_MAX, but don't exceed the s32 int promotion. */\
 	/* -fsanitize=implicit-signed-integer-truncation */	\
 	UBSAN_COMMUT(isit, s16, s16, S16_MAX, add, s8,    3)	\
@@ -184,18 +236,18 @@ UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 
 #define LVALUE_S32_TESTS		\
 	/* Something plus nothing, not gonna trap. */		\
-	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s8,      0)	\
-	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s16,     0)	\
-	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s32,     0)	\
-	UBSAN_COMMUT(test, s32, s8, S8_MAX, add, s64,     0)	\
-	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s8,    0)	\
-	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s16,   0)	\
-	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s32,   0)	\
-	UBSAN_COMMUT(test, s32, s16, S16_MAX, add, s64,   0)	\
-	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s8,    0)	\
-	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s16,   0)	\
-	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s32,   0)	\
-	UBSAN_COMMUT(test, s32, s32, S32_MAX, add, s64,   0)	\
+	UBSAN_COMMUT(survive, s32, s8, S8_MAX, add, s8,      0)	\
+	UBSAN_COMMUT(survive, s32, s8, S8_MAX, add, s16,     0)	\
+	UBSAN_COMMUT(survive, s32, s8, S8_MAX, add, s32,     0)	\
+	UBSAN_COMMUT(survive, s32, s8, S8_MAX, add, s64,     0)	\
+	UBSAN_COMMUT(survive, s32, s16, S16_MAX, add, s8,    0)	\
+	UBSAN_COMMUT(survive, s32, s16, S16_MAX, add, s16,   0)	\
+	UBSAN_COMMUT(survive, s32, s16, S16_MAX, add, s32,   0)	\
+	UBSAN_COMMUT(survive, s32, s16, S16_MAX, add, s64,   0)	\
+	UBSAN_COMMUT(survive, s32, s32, S32_MAX, add, s8,    0)	\
+	UBSAN_COMMUT(survive, s32, s32, S32_MAX, add, s16,   0)	\
+	UBSAN_COMMUT(survive, s32, s32, S32_MAX, add, s32,   0)	\
+	UBSAN_COMMUT(survive, s32, s32, S32_MAX, add, s64,   0)	\
 	/* TODO */						\
 	UBSAN_COMMUT(sio, s32, s32, S32_MAX, add, s8,    3)	\
 	UBSAN_COMMUT(sio, s32, s32, S32_MAX, add, s16,   3)	\
@@ -233,20 +285,24 @@ UBSAN_CHECK_ ## how(__UNIQUE_ID(how))					\
 
 #define LVALUE_U64_TESTS	/* TODO */
 
+/*
+ * Pointer values cannot currently have the "wrap" attribute, so
+ * don't use UBSAN_TEST, instead just the trapping tests.
+ */
 #define LVALUE_PTR_TESTS		\
 	/* All within normal pointer ranges. */			\
-	UBSAN_TEST(test, ptr, ptr, (void *)1, add, s32, 100)	\
-	UBSAN_TEST(test, ptr, ptr, (void *)100, sub, s32, 50)	\
-	UBSAN_TEST(test, ptr, ptr, (void *)(100), add, s32, INT_MAX / 2) \
-	UBSAN_TEST(test, ptr, ptr, (void *)(-1), sub, s32, INT_MAX / 2)	\
+	UBSAN_trap_TEST(survive, ptr, ptr, (void *)1, add, s32, 100)	\
+	UBSAN_trap_TEST(survive, ptr, ptr, (void *)100, sub, s32, 50)	\
+	UBSAN_trap_TEST(survive, ptr, ptr, (void *)(100), add, s32, INT_MAX / 2) \
+	UBSAN_trap_TEST(survive, ptr, ptr, (void *)(-1), sub, s32, INT_MAX / 2)	\
 	/* Operating on NULL should trap. (Even 0 ?!) */	\
-	UBSAN_TEST(po, ptr, ptr, NULL, add, s32, 0)		\
-	UBSAN_TEST(po, ptr, ptr, NULL, sub, s32, 0)		\
-	UBSAN_TEST(po, ptr, ptr, NULL, add, s32, 10)		\
-	UBSAN_TEST(po, ptr, ptr, NULL, sub, s32, 10)		\
+	UBSAN_trap_TEST(po, ptr, ptr, NULL, add, s32, 0)		\
+	UBSAN_trap_TEST(po, ptr, ptr, NULL, sub, s32, 0)		\
+	UBSAN_trap_TEST(po, ptr, ptr, NULL, add, s32, 10)		\
+	UBSAN_trap_TEST(po, ptr, ptr, NULL, sub, s32, 10)		\
 	/* Overflow and underflow should trap. */		\
-	UBSAN_TEST(po, ptr, ptr, (void *)(-1), add, s32, 2)	\
-	UBSAN_TEST(po, ptr, ptr, (void *)1, sub, s32, 2)	\
+	UBSAN_trap_TEST(po, ptr, ptr, (void *)(-1), add, s32, 2)	\
+	UBSAN_trap_TEST(po, ptr, ptr, (void *)1, sub, s32, 2)	\
 
 
 #define UBSAN_TESTS		\
