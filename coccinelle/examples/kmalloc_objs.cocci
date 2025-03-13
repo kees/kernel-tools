@@ -1,6 +1,12 @@
 // Options: --no-includes --include-headers
 
-@direct@
+@noprof@
+identifier ALLOC =~ "kv?[mz]alloc_noprof";
+@@
+
+	ALLOC(...)
+
+@direct depends on !noprof && !(file in "tools") && !(file in "samples")@
 type TYPE;
 TYPE *P;
 expression GFP;
@@ -43,79 +49,62 @@ fresh identifier ALLOC_FLEX = ALLOC ## "_flex";
 +	kvzalloc_objs(P, COUNT, GFP)
 )
 
-@assign_struct_size@
+@assign_sizeof depends on !noprof && !(file in "tools") && !(file in "samples")@
 type TYPE;
 TYPE *P;
 expression GFP;
-expression COUNT;
-expression FLEX;
 expression SIZE;
+identifier ALLOC =~ "kv?[mz]alloc";
+fresh identifier ALLOC_OBJ_SZ = ALLOC ## "_obj_sz";
+@@
+
+(
+-	SIZE = sizeof(*P);
+-	P = ALLOC(SIZE, GFP);
++	ALLOC_OBJ_SZ(P, GFP, &SIZE);
+|
+-	SIZE = sizeof(TYPE);
+-	P = ALLOC(SIZE, GFP);
++	ALLOC_OBJ_SZ(P, GFP, &SIZE);
+|
+-	SIZE = sizeof(*P);
+	... when != SIZE
+-	P = ALLOC(SIZE, GFP);
++	ALLOC_OBJ_SZ(P, GFP, &SIZE);
+|
+-	SIZE = sizeof(TYPE);
+	... when != SIZE
+-	P = ALLOC(SIZE, GFP);
++	ALLOC_OBJ_SZ(P, GFP, &SIZE);
+)
+
+@assign_struct_size depends on !noprof && !(file in "tools") && !(file in "samples")@
+type TYPE;
+TYPE *P;
+expression GFP;
+expression SIZE;
+expression FLEX;
+expression COUNT;
 identifier ALLOC =~ "kv?[mz]alloc";
 fresh identifier ALLOC_FLEX_SZ = ALLOC ## "_flex_sz";
 @@
 
 (
--	SIZE = struct_size(P, FLEX, COUNT);
+-	SIZE = struct_size(*P, FLEX, COUNT);
 -	P = ALLOC(SIZE, GFP);
 +	ALLOC_FLEX_SZ(P, FLEX, COUNT, GFP, &SIZE);
 |
--	SIZE = struct_size(P, FLEX, COUNT);
+-	SIZE = struct_size_t(TYPE, FLEX, COUNT);
+-	P = ALLOC(SIZE, GFP);
++	ALLOC_FLEX_SZ(P, FLEX, COUNT, GFP, &SIZE);
+|
+-	SIZE = struct_size(*P, FLEX, COUNT);
 	... when != SIZE
 -	P = ALLOC(SIZE, GFP);
 +	ALLOC_FLEX_SZ(P, FLEX, COUNT, GFP, &SIZE);
-)
-
-@assign_sizeof@
-type TYPE;
-TYPE *P;
-type SIZE_TYPE;
-identifier SIZE;
-expression GFP;
-identifier ALLOC =~ "kv?[mz]alloc";
-fresh identifier ALLOC_OBJ = ALLOC ## "_obj";
-fresh identifier ALLOC_OBJ_SZ = ALLOC ## "_obj_sz";
-@@
-
-(
--	SIZE_TYPE SIZE;
-	... when != SIZE
--	SIZE = sizeof(*P);
--	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ(P, GFP);
-	... when != SIZE
 |
--	SIZE_TYPE SIZE;
-	... when != SIZE
--	SIZE = sizeof(TYPE);
--	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ(P, GFP);
-	... when != SIZE
-|
--	SIZE = sizeof(*P);
--	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ(P, GFP);
-	... when != SIZE
-|
--	SIZE = sizeof(TYPE);
--	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ(P, GFP);
-	... when != SIZE
-|
--	SIZE = sizeof(*P);
--	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ_SZ(P, GFP, &SIZE);
-|
--	SIZE = sizeof(TYPE);
--	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ_SZ(P, GFP, &SIZE);
-|
--	SIZE = sizeof(*P);
+-	SIZE = struct_size_t(TYPE, FLEX, COUNT);
 	... when != SIZE
 -	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ_SZ(P, GFP, &SIZE);
-|
--	SIZE = sizeof(TYPE);
-	... when != SIZE
--	P = ALLOC(SIZE, GFP);
-+	ALLOC_OBJ_SZ(P, GFP, &SIZE);
++	ALLOC_FLEX_SZ(P, FLEX, COUNT, GFP, &SIZE);
 )
