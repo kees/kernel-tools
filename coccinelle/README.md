@@ -310,6 +310,28 @@ function(&ptr->thing.member->table);
 
 [ref](https://lore.kernel.org/cocci/alpine.DEB.2.22.394.2006182155260.2367@hadrien/)
 
+In order to match types for a given struct member, the operator can be bound to a
+typed metavariable with `@`:
+
+```
+@@
+identifier fld;
+expression e;
+type TYPE;
+TYPE *member;
+TYPE *PTR;
+TYPE INSTANCE;
+expression VAR;
+@@
+
+*	function( \(\(PTR\|e.@member fld\|e->@member fld\) \& VAR\) )
+```
+
+This will now make `TYPE` and any associated metavariables (e.g.
+`INSTANCE` above) available within the rule.
+
+[ref](https://lore.kernel.org/cocci/F7BB5789-F9F2-4D17-986A-AD7BC976F18B@inria.fr/)
+
 ## Include/exclude specific names in matches
 
 To include or exclude specific names in matches, the `==`
