@@ -1,0 +1,12 @@
+Kconfig
+*/Kconfig
+*/Kconfig.*
+Makefile
+*/Makefile
+*/Makefile.*
+scripts/*
+Documentation/*
+*.h
+*.S
+*.c
+tools/testing/*

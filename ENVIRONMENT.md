@@ -39,6 +39,7 @@ alias short='git short'
 	insteadOf = http://git.kernel.org
 [diff]
 	renames = true
+	orderfile = ~/src/kernel-tools/git-scripts/orderfile.txt
 [rebase]
 	autoSquash = true
 [sendemail]
