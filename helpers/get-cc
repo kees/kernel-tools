@@ -29,4 +29,6 @@ MYSELF=$(git config user.name)
 	--git-min-percent 15 \
 	--git-since '3-years-ago' \
 	--no-rolestats \
-	"$PATCH" | grep -vE '^(linux-kernel@vger|'"$MYSELF"')'
+	"$PATCH" | grep -vE '^(linux-kernel@vger|'"$MYSELF"')' | \
+perl -pe 's/^([^<\n]+)\n?$/<$1>\n/;' | \
+(cd ~/src/linux-build/coverity && git check-mailmap --stdin)
