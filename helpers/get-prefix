@@ -22,6 +22,8 @@ debug = False
 def get_prefixes(area, paths):
 	# "--follow" is very slow, but sometime needed:
 	#ret = subprocess.run(['git', 'log', '-n', '64', '--no-merges', '--oneline', '--follow', '--'] + paths,
+	if debug:
+		print(paths, file=sys.stderr)
 	ret = subprocess.run(['git', 'log', '-n', '64', '--no-merges', '--oneline', '--'] + paths,
 			stdout=subprocess.PIPE, check=False)
 	commits = str(ret.stdout, 'utf-8').strip().splitlines()
@@ -73,10 +75,13 @@ def get_prefixes(area, paths):
 		else:
 			print("%s:" % (likely[i][0]))
 
-if len(sys.argv) > 1:
+if len(sys.argv) > 2:
 	get_prefixes(sys.argv[1], sys.argv[2:])
 else:
-	ret = subprocess.run(['diffstat', '-lp1'],
+	source = "-"
+	if len(sys.argv) > 1:
+		source = sys.argv[1]
+	ret = subprocess.run(['diffstat', '-lp1', source],
 			stdout=subprocess.PIPE, check=False)
 	paths = str(ret.stdout, 'utf-8').strip().splitlines()
 	get_prefixes("unknown", paths)
