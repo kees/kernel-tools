@@ -22,7 +22,20 @@ if [ -z "$commits" ]; then
 	exit 0
 fi
 
-echo "Checking $@ ..." >&2
+from=$(echo "$@" | cut -d. -f1)
+to=$(echo "$@" | cut -d. -f2-)
+if [ -z "$to" ]; then
+	span="$@"
+else
+	BASE_TAG=$(git tag --points-at "${from}")
+	if [ -z "$BASE_TAG" ]; then
+		span="${from}..${to}"
+	else
+		span="${BASE_TAG}..${to}"
+	fi
+fi
+
+echo "Checking ${span} ..." >&2
 echo "    skip with __NO_PUSH_CHECKS=y" >&2
 
 "$(realpath "$(dirname "$0")")/check_fixes" "$@"
