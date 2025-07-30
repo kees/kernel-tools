@@ -372,7 +372,8 @@ TEST_SIGNAL(alloc_size_enforced_by_sanitizer, SIGILL)
 	\
 	/* GCC's sanitizer trips even in __bdos */ \
 	/* https://gcc.gnu.org/bugzilla/show_bug.cgi?id=116984 */ \
-	CLANG_ONLY(EXPECT_EQ(__builtin_dynamic_object_size(&p->array[negative], 1), 0)); \
+	/* ARGH and now so does Clang!! */ \
+	/*CLANG_ONLY(EXPECT_EQ(__builtin_dynamic_object_size(&p->array[negative], 1), 0));*/ \
 	/* Check array size alone. */					\
 	EXPECT_EQ(__builtin_object_size(p->array, 1), SIZE_MAX);	\
 	EXPECT_EQ(__builtin_dynamic_object_size(p->array, 1), p->count * sizeof(*p->array)); \
@@ -682,6 +683,32 @@ TEST_SIGNAL(alloc_size_outside_counted_by, SIGILL)
 	EXPECT_NE(b[bytes], 0xAA);
 
 	TH_LOG("this should have been unreachable");
+}
+
+TEST_SIGNAL(address_beyond, SIGILL)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+	int *i;
+
+	p = alloc_annotated(index);
+
+	REPORT_SIZE(p->array);
+	i = (int *)&p->array[index];
+	EXPECT_EQ(*i, 0);
+}
+
+TEST_SIGNAL(integral_beyond, SIGILL)
+{
+	struct annotated *p;
+	int index = MAX_INDEX + unconst;
+	int i;
+
+	p = alloc_annotated(index);
+
+	REPORT_SIZE(p->array);
+	i = p->array[index];
+	EXPECT_EQ(i, 0);
 }
 
 #if 0

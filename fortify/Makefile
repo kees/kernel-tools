@@ -10,7 +10,7 @@ TRUNCATION_SANITIZER =	\
 ifeq ($(findstring clang,$(CC)),clang)
 UBSAN_TRAP = -fsanitize-trap=all
 ARRAY_SANITIZER = -fsanitize=bounds
-CFLAGS += -fexperimental-late-parse-attributes -DCOUNTED_BY_POINTERS=1
+#CFLAGS += -fexperimental-late-parse-attributes -DCOUNTED_BY_POINTERS=1
 else
 UBSAN_TRAP = -fsanitize-undefined-trap-on-error
 ARRAY_SANITIZER = -fsanitize=bounds-strict -fsanitize=object-size

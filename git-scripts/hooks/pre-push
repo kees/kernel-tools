@@ -37,8 +37,20 @@ do
 		# Handle delete
 		echo >&2 "pre-push: Deleting branch."
 	else
-		since=$(git describe --match 'v*' --abbrev=0 $local_oid)
-		echo >&2 "pre-push: Most recent tag: $since"
+		linus_since=$(git describe --match 'v*' --abbrev=0 $local_oid)
+		echo >&2 "pre-push: Most recent release tag:    $linus_since"
+
+		next_since=$(git describe --match 'next-*' --abbrev=0 $local_oid)
+		echo >&2 "pre-push: Most recent linux-next tag: $next_since"
+
+		commits_from_linus=$(git rev-list --count ${linus_since}..${local_oid})
+		commits_from_next=$(git rev-list --count ${next_since}..${local_oid})
+		if [ "$commits_from_linus" -le "$commits_from_next" ]; then
+			since="$linus_since"
+		else
+			since="$next_since"
+		fi
+		echo >&2 "pre-push: Using nearer tag as base:   $since"
 
 		# If we have a new branch, or if the remote HEAD is not an
 		# ancestor of the local HEAD, we're probably doing a --force,
@@ -48,7 +60,7 @@ do
 		then
 			# New branch, examine all commits since most recent tag.
 			range="$since..$local_oid"
-			echo >&2 "pre-push: New branch. Checking $range"
+			echo >&2 "pre-push: New branch. Want to check: $range"
 		else
 			# Update to existing branch, examine new commits
 
@@ -60,10 +72,10 @@ do
 			# that tag.
 			if git merge-base --is-ancestor $remote_oid $since ; then
 				range="$since..$local_oid"
-				echo >&2 "pre-push: Merged branch. Checking $range"
+				echo >&2 "pre-push: Merged branch. Want to check: $range"
 			else
 				range="$remote_oid..$local_oid"
-				echo >&2 "pre-push: Existing branch. Checking $range"
+				echo >&2 "pre-push: Existing branch. Want to check: $range"
 			fi
 		fi
 		~/bin/check_commits "$branch" "$range"

@@ -22,8 +22,9 @@ if [ -z "$commits" ]; then
 	exit 0
 fi
 
-from=$(echo "$@" | cut -d. -f1)
-to=$(echo "$@" | cut -d. -f2-)
+arg="$@"
+from="${arg%%..*}"
+to="${arg#*..}"
 if [ -z "$to" ]; then
 	span="$@"
 else
