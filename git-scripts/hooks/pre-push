@@ -39,18 +39,20 @@ do
 	else
 		linus_since=$(git describe --match 'v*' --abbrev=0 $local_oid)
 		echo >&2 "pre-push: Most recent release tag:    $linus_since"
+		since="$linus_since"
 
-		next_since=$(git describe --match 'next-*' --abbrev=0 $local_oid)
-		echo >&2 "pre-push: Most recent linux-next tag: $next_since"
+		next_since=$(git describe --match 'next-*' --abbrev=0 $local_oid 2>/dev/null || true)
+		if [ -n "$next_since" ] ; then
+			echo >&2 "pre-push: Most recent linux-next tag: $next_since"
 
-		commits_from_linus=$(git rev-list --count ${linus_since}..${local_oid})
-		commits_from_next=$(git rev-list --count ${next_since}..${local_oid})
-		if [ "$commits_from_linus" -le "$commits_from_next" ]; then
-			since="$linus_since"
-		else
-			since="$next_since"
+			commits_from_linus=$(git rev-list --count ${linus_since}..${local_oid})
+			commits_from_next=$(git rev-list --count ${next_since}..${local_oid})
+
+			if [ "$commits_from_linus" -gt "$commits_from_next" ]; then
+				since="$next_since"
+			fi
+			echo >&2 "pre-push: Using nearer tag as base:   $since"
 		fi
-		echo >&2 "pre-push: Using nearer tag as base:   $since"
 
 		# If we have a new branch, or if the remote HEAD is not an
 		# ancestor of the local HEAD, we're probably doing a --force,
