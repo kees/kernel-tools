@@ -1,0 +1,9 @@
+### Global .gitignore
+#
+# Coding assistants
+#
+/CLAUDE.md
+/.claude
+/GEMINI.md
+/.gemini
+

@@ -34,6 +34,7 @@ alias short='git short'
 ```
 [core]
 	abbrev = 12
+	excludesFile = ~/src/kernel-tools/git-scripts/gitignore-global.txt
 [url "https://git.kernel.org"]
 	insteadOf = git://git.kernel.org
 	insteadOf = http://git.kernel.org
