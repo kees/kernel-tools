@@ -10,9 +10,13 @@ set -e
 # Fail on undefined variables
 set -u
 
+# Find our coverity build instance name
+INSTANCE=${1:-build}
+shift || true
+
 # prepare environment
-CONFIG="$HOME/.config/coverity-build"
-CACHE="$HOME/.cache/coverity-build"
+CONFIG="$HOME/.config/coverity-${INSTANCE}"
+CACHE="$HOME/.cache/coverity-${INSTANCE}"
 mkdir -p "$CONFIG" "$CACHE"
 
 # Only run one at a time
@@ -45,7 +49,7 @@ if [ ! -r "$CONFIG/settings" ]; then
 	echo 'source_git="$HOME"/path/to/upstream-kernel-git' >> "$CONFIG/settings"
 	echo "# Name of remote tree (with a 'master' branch) that contains" >> "$CONFIG/settings"
 	echo "# sequential tags. e.g. 'linux-next'" >> "$CONFIG/settings"
-	echo "build_branch=branch-to-track-for-master-tags" >> "$CONFIG/settings"
+	echo "build_remote=remote-to-track-for-master-tags" >> "$CONFIG/settings"
 	echo "# execution wrapper tool (if any)" >> "$CONFIG/settings"
 	echo "wrapper=" >> "$CONFIG/settings"
 	echo "# optional host to rsync to for Coverity to fetch from" >> "$CONFIG/settings"
@@ -58,11 +62,21 @@ fi
 
 export PATH="$PATH":"$coverity_path"
 
-OBJDIR=build-coverity
+OBJDIR="build-coverity-${INSTANCE}"
 
 skip_at_check=
 if [ "${1:-}" = "--scheduled" ] ; then
 	skip_at_check=1
+fi
+
+if [ "${1:-}" = "--help" ] ; then
+	echo "Usage: $0 [OPTIONS]" >&2
+	echo "  --scheduled     Run as the automated re-launch instance" >&2
+	echo "  --help          This usage" >&2
+	echo "" >&2
+	echo "My config is: $CONFIG" >&2
+	echo "This instance ($INSTANCE) is named '${coverity_project}'" >&2
+	exit 1
 fi
 
 coverity_prepare()
@@ -72,10 +86,10 @@ coverity_prepare()
 
 	# fetch latest tree
 	cd "$source_git"
-	git fetch -q "$build_branch"
+	git fetch -q "$build_remote" master
 
 	# skip unless there a newly added branch tag
-	latest=$(git describe --tags --abbrev=0 "$build_branch"/master)
+	latest=$(git describe --tags --abbrev=0 "$build_remote"/master)
 	current=$(cat "$CACHE"/prepare.stamp)
 	if [ "$latest" = "$current" ]; then
 			#echo "$latest already prepared" >&2
@@ -131,7 +145,7 @@ coverity_build()
 
 	# coverity build
 	echo "build $latest: ..."
-	rm -rf build.log cov-int "$build_branch".tar "$build_branch".tar.xz
+	rm -rf build.log cov-int "$build_remote".tar "$build_remote".tar.xz
 	$wrapper cov-build --help 2>/dev/null || true
 
 	# Build, reporting warnings/errors before timing details, stop on fail.
@@ -178,10 +192,10 @@ coverity_collect()
 
 	# collect results
 	echo "collect $latest: tar ..."
-	time $wrapper tar cf "$build_branch".tar cov-int
+	time $wrapper tar cf "$build_remote".tar cov-int
 	echo ""
 	echo "collect $latest: xz ..."
-	time $wrapper xz -z -9 -T 48 "$build_branch".tar
+	time $wrapper xz -z -9 -T 48 "$build_remote".tar
 	echo ""
 
 	# mark as collected
@@ -238,7 +252,7 @@ coverity_upload()
 	fi
 
 	# upload to coverity
-	ls -la "$build_branch".tar.xz
+	ls -la "$build_remote".tar.xz
 	if [ -n "${rsync_location:-}" ]; then
 		echo "upload to bandwidth host $latest: ..."
 
@@ -246,17 +260,20 @@ coverity_upload()
 		if [ -n "${upload_rate:-}" ]; then
 			rate="--bwlimit=$upload_rate"
 		fi
-		time rsync -qa --delete-before $rate "$build_branch".tar.xz "$rsync_location"/"$build_branch".tar.xz
+		time rsync -qa --delete-before $rate "$build_remote".tar.xz "$rsync_location"/"$build_remote".tar.xz
 
+		# This schedules a download with Coverity, but it may be
+		# hours before it actually fetches the file. As a result,
+		# these need to stay in place for a while.
 		echo "requesting pull of $latest: ..."
 		# Ask Coverity to pull from us.
 		time $CURL -sS \
 		  --form project="$coverity_project" \
 		  --form token="$coverity_token" \
 		  --form email="$coverity_email" \
-		  --form url="$public_url/$build_branch.tar.xz" \
+		  --form url="$public_url/$build_remote.tar.xz" \
 		  --form version="$latest" \
-		  --form description="$build_branch" \
+		  --form description="$build_remote" \
 		  -o coverity-upload.log \
 		  https://scan.coverity.com/builds
 		echo ""
@@ -272,9 +289,9 @@ coverity_upload()
 		time $CURL $rate -sS \
 		  --form token="$coverity_token" \
 		  --form email="$coverity_email" \
-		  --form file=@"$build_branch".tar.xz \
+		  --form file=@"$build_remote".tar.xz \
 		  --form version="$latest" \
-		  --form description="$build_branch" \
+		  --form description="$build_remote" \
 		  -o coverity-upload.log \
 		  'https://scan.coverity.com/builds?project='"$url"
 		echo ""
