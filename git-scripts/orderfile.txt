@@ -1,3 +1,5 @@
+gcc/kcfi.h
+gcc/kcfi.cc
 Kconfig
 */Kconfig
 */Kconfig.*
