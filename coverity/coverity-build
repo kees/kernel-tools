@@ -70,7 +70,7 @@ if [ "${1:-}" = "--scheduled" ] ; then
 fi
 
 if [ "${1:-}" = "--help" ] ; then
-	echo "Usage: $0 [OPTIONS]" >&2
+	echo "Usage: $0 INSTANCE [OPTIONS]" >&2
 	echo "  --scheduled     Run as the automated re-launch instance" >&2
 	echo "  --help          This usage" >&2
 	echo "" >&2
@@ -312,14 +312,14 @@ coverity_upload()
 		WHEN="$(cat coverity-upload.log | awk -F 'on or after ' '{print $2}' | awk -F'[ -]' '{print $2" "$3" "$1" "$4" "$5" "$6}')"
 		date --date="$WHEN"
 		AT=$(date --date="$WHEN" +'%Y%m%d%H%M')
-		echo "$0 --scheduled 2>&1 | $coverity_cron_pipe" | at -t "$AT"
+		echo "$0 ${INSTANCE} --scheduled 2>&1 | $coverity_cron_pipe" | at -t "$AT"
 		exit 1
 	else
 		echo "Unexpected upload report:" >&2
 		cat coverity-upload.log >&2
 
 		AT=$(date --date="+1 hour" +'%Y%m%d%H%M')
-		echo "$0 --scheduled 2>&1 | $coverity_cron_pipe" | at -t "$AT"
+		echo "$0 ${INSTANCE} --scheduled 2>&1 | $coverity_cron_pipe" | at -t "$AT"
 		exit 1
 	fi
 
