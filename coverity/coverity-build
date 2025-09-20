@@ -28,7 +28,7 @@ else
 fi
 
 if [ ! -r "$CONFIG/settings" ]; then
-	echo "echo 'Please update $CONFIG/settings with your Coverity settings' >&2" >> "$CACHE/settings"
+	echo "echo 'Please update $CONFIG/settings with your Coverity settings' >&2" >> "$CONFIG/settings"
 	echo "exit 1" >> "$CONFIG/settings"
 	echo '# Coverity project name as it appears on the dashboard, with any spaces.' >> "$CONFIG/settings"
 	echo '# e.g. "linux-next weekly scan" for' >> "$CONFIG/settings"
