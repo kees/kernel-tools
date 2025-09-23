@@ -28,38 +28,40 @@ else
 fi
 
 if [ ! -r "$CONFIG/settings" ]; then
-	echo "echo 'Please update $CONFIG/settings with your Coverity settings' >&2" >> "$CONFIG/settings"
-	echo "exit 1" >> "$CONFIG/settings"
-	echo '# Coverity project name as it appears on the dashboard, with any spaces.' >> "$CONFIG/settings"
-	echo '# e.g. "linux-next weekly scan" for' >> "$CONFIG/settings"
-	echo '# https://scan.coverity.com/projects/linux-next-weekly-scan' >> "$CONFIG/settings"
-	echo 'coverity_project="fancy-pants project"' >> "$CONFIG/settings"
-	echo "# Email address of admin account in project" >> "$CONFIG/settings"
-	echo "coverity_email=you@example.com" >> "$CONFIG/settings"
-	echo "# Token for project analysis uploads" >> "$CONFIG/settings"
-	echo "coverity_token=your-token" >> "$CONFIG/settings"
-	echo "# Path to Coverity binaries" >> "$CONFIG/settings"
-	echo 'coverity_path="$HOME"/path/to/cov-analysis-linux64-YYYY.MM/bin' >> "$CONFIG/settings"
-	echo "# Command to receive output from cron runs" >> "$CONFIG/settings"
-	echo '# e.g. "mail me@example"' >> "$CONFIG/settings"
-	echo "coverity_cron_pipe=command-to-pipe-cron-reports" >> "$CONFIG/settings"
-	echo "# Directory for git worktree checkouts and builds" >> "$CONFIG/settings"
-	echo 'coverity_build_dir="$HOME"/path/to/build-source-tree' >> "$CONFIG/settings"
-	echo "# Directory contains git tree under analysis" >> "$CONFIG/settings"
-	echo 'source_git="$HOME"/path/to/upstream-kernel-git' >> "$CONFIG/settings"
-	echo "# Name of remote tree to fetch" >> "$CONFIG/settings"
-	echo "build_remote=remote-to-track" >> "$CONFIG/settings"
-	echo "# Name of remote branch that contains sequential tags" >> "$CONFIG/settings"
-	echo "build_branch=master" >> "$CONFIG/settings"
-	echo "# Pattern of expected tag" >> "$CONFIG/settings"
-	echo "tag_match=v.*" >> "$CONFIG/settings"
-	echo "# execution wrapper tool (if any)" >> "$CONFIG/settings"
-	echo "wrapper=" >> "$CONFIG/settings"
-	echo "# optional host to rsync to for Coverity to fetch from" >> "$CONFIG/settings"
-	echo "rsync_location=" >> "$CONFIG/settings"
-	echo "public_url=" >> "$CONFIG/settings"
-	echo "# optionally limit upload speed (nnnK, etc)" >> "$CONFIG/settings"
-	echo "upload_rate=" >> "$CONFIG/settings"
+	cat >>"$CONFIG/settings" <EOM
+echo 'Please update $CONFIG/settings with your Coverity settings' >&2
+exit 1
+# Coverity project name as it appears on the dashboard, with any spaces.
+# e.g. "linux-next weekly scan" for
+# https://scan.coverity.com/projects/linux-next-weekly-scan
+coverity_project="fancy-pants project"
+# Email address of admin account in project
+coverity_email=you@example.com
+# Token for project analysis uploads
+coverity_token=your-token
+# Path to Coverity binaries
+coverity_path="$HOME"/path/to/cov-analysis-linux64-YYYY.MM/bin
+# Command to receive output from cron runs
+# e.g. "mail me@example"
+coverity_cron_pipe=command-to-pipe-cron-reports
+# Directory for git worktree checkouts and builds
+coverity_build_dir="$HOME"/path/to/build-source-tree
+# Directory contains git tree under analysis
+source_git="$HOME"/path/to/upstream-kernel-git
+# Name of remote tree to fetch
+build_remote=remote-to-track
+# Name of remote branch that contains sequential tags
+build_branch=master
+# Pattern of expected tag
+tag_match=v.*
+# execution wrapper tool (if any)
+wrapper=run-in-docker
+# optional host to rsync to for Coverity to fetch from
+rsync_location=
+public_url=https://where.to.get/the/file/dir/
+# optionally limit upload speed (nnnK, etc)
+upload_rate=800
+EOM
 fi
 . "$CONFIG/settings"
 
