@@ -47,9 +47,12 @@ if [ ! -r "$CONFIG/settings" ]; then
 	echo 'coverity_build_dir="$HOME"/path/to/build-source-tree' >> "$CONFIG/settings"
 	echo "# Directory contains git tree under analysis" >> "$CONFIG/settings"
 	echo 'source_git="$HOME"/path/to/upstream-kernel-git' >> "$CONFIG/settings"
-	echo "# Name of remote tree (with a 'master' branch) that contains" >> "$CONFIG/settings"
-	echo "# sequential tags. e.g. 'linux-next'" >> "$CONFIG/settings"
-	echo "build_remote=remote-to-track-for-master-tags" >> "$CONFIG/settings"
+	echo "# Name of remote tree to fetch" >> "$CONFIG/settings"
+	echo "build_remote=remote-to-track" >> "$CONFIG/settings"
+	echo "# Name of remote branch that contains sequential tags" >> "$CONFIG/settings"
+	echo "build_branch=master" >> "$CONFIG/settings"
+	echo "# Pattern of expected tag" >> "$CONFIG/settings"
+	echo "tag_match=v.*" >> "$CONFIG/settings"
 	echo "# execution wrapper tool (if any)" >> "$CONFIG/settings"
 	echo "wrapper=" >> "$CONFIG/settings"
 	echo "# optional host to rsync to for Coverity to fetch from" >> "$CONFIG/settings"
@@ -86,10 +89,14 @@ coverity_prepare()
 
 	# fetch latest tree
 	cd "$source_git"
-	git fetch -q "$build_remote" master
+	git fetch -q "$build_remote" "$build_branch"
 
 	# skip unless there a newly added branch tag
-	latest=$(git describe --tags --abbrev=0 "$build_remote"/master)
+	latest=$(git describe --tags --abbrev=0 "$build_remote"/"$build_branch")
+	if ! echo "$latest" | grep -q "^${tag_match}$" ; then
+		#echo "$latest does not match $tag_match" >&2
+		return
+	fi
 	current=$(cat "$CACHE"/prepare.stamp)
 	if [ "$latest" = "$current" ]; then
 			#echo "$latest already prepared" >&2
@@ -260,7 +267,13 @@ coverity_upload()
 		if [ -n "${upload_rate:-}" ]; then
 			rate="--bwlimit=$upload_rate"
 		fi
-		time rsync -qa --delete-before $rate "$build_remote".tar.xz "$rsync_location"/"$build_remote".tar.xz
+		# Remote destination user redirection is possible via
+		# .ssh/config like this:
+		#
+		# Host $rsync_location...
+		#    User coverity
+		#    IdentityFile ~/.ssh/id_rsa...
+		time rsync -qa $rate "$build_remote".tar.xz "$rsync_location"/"$build_remote".tar.xz
 
 		# This schedules a download with Coverity, but it may be
 		# hours before it actually fetches the file. As a result,
