@@ -19,11 +19,19 @@ CONFIG="$HOME/.config/coverity-${INSTANCE}"
 CACHE="$HOME/.cache/coverity-${INSTANCE}"
 mkdir -p "$CONFIG" "$CACHE"
 
+log()
+{
+	if [ -n "${COVERITY_BUILD_VERBOSE:-}" ] ; then
+		echo "$@" >&2
+	fi
+}
+
+
 # Only run one at a time
 exec 99>"$CACHE"/run.lock
 if flock -en 99; then :
 else
-	#echo "already running" >&2
+	log "already running"
 	exit 0
 fi
 
@@ -91,17 +99,18 @@ coverity_prepare()
 
 	# fetch latest tree
 	cd "$source_git"
-	git fetch -q "$build_remote" "$build_branch"
+	git fetch -q --tags "$build_remote" "$build_branch"
 
 	# skip unless there a newly added branch tag
 	latest=$(git describe --tags --abbrev=0 "$build_remote"/"$build_branch")
+	log "latest $INSTANCE tag is '$latest'"
 	if ! echo "$latest" | grep -q "^${tag_match}$" ; then
-		#echo "$latest does not match $tag_match" >&2
+		log "$latest does not match $tag_match"
 		return
 	fi
 	current=$(cat "$CACHE"/prepare.stamp)
 	if [ "$latest" = "$current" ]; then
-			#echo "$latest already prepared" >&2
+			log "$latest already prepared"
 			return
 	fi
 
@@ -142,13 +151,13 @@ coverity_build()
 	latest=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
 	current=$(cat "$CACHE"/build.stamp)
 	if [ "$latest" = "$current" ]; then
-			#echo "$latest already built" >&2
+			log "$latest already built"
 			return
 	fi
 
 	if [ -e "$CACHE"/build.stamp.fail ]; then
 		# We can go no further with this version.
-		#echo "$latest already failed to build" >&2
+		log "$latest already failed to build"
 		exit 0
 	fi
 
@@ -195,7 +204,7 @@ coverity_collect()
 	latest=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
 	current=$(cat "$CACHE"/collect.stamp)
 	if [ "$latest" = "$current" ]; then
-			#echo "$latest already collected" >&2
+			log "$latest already collected"
 			return
 	fi
 
@@ -240,14 +249,14 @@ coverity_upload()
 	latest=$(git describe --exact-match --tags $(git log -n1 --pretty='%h'))
 	current=$(cat "$CACHE"/upload.stamp)
 	if [ "$latest" = "$current" ]; then
-			#echo "$latest already uploaded" >&2
+			log "$latest already uploaded"
 			return
 	fi
 
 	url=$(echo "$coverity_project" | sed -e 's/ /-/g')
 	scanned=$($CURL -so- "https://scan.coverity.com/projects/$url" | grep '<p>Version: ' | awk -F": " '{print $2}' | cut -d'<' -f1)
 	if [ "$latest" = "$scanned" ]; then
-		#echo "$scanned already present on dashboard"
+		log "$scanned already present on dashboard"
 		# mark as uploaded
 		echo "$latest" > "$CACHE"/upload.stamp.new
 		mv "$CACHE"/upload.stamp.new "$CACHE"/upload.stamp
