@@ -1,5 +1,17 @@
 gcc/kcfi.h
 gcc/kcfi.cc
+gcc/config/*.h
+gcc/config/*.md
+gcc/config/*.cc
+gcc/config/*
+gcc/*.texi
+gcc/testsuite/*.exp
+gcc/testsuite/*
+scripts/kconfig/*.h
+scripts/kconfig/*.c
+scripts/kconfig/tests/*/Kconfig
+scripts/kconfig/tests/*/*config
+scripts/kconfig/tests/*
 Kconfig
 */Kconfig
 */Kconfig.*
@@ -11,4 +23,3 @@ Documentation/*
 *.h
 *.S
 *.c
-tools/testing/*
