@@ -29,11 +29,55 @@ quoted = re.compile(r'^"(.*)"$')
 # Ignore affiliations
 affiliated = re.compile(r'^(.*)\(.*\)$')
 # Ignore these identities, which are bots, collectives, twitter handles, or intentionally no email.
-email_ignore = re.compile(r'^(.*@syzkaller.*.appspot.*|syzkaller@googlegroups\.com|abaci-bugfix@linux.alibaba.com|(lpk|lkp)@intel.com|ci_notify@linaro.org|bot@kernelci.org|patchwork-bot\+.*@kernel.org|keescook\+coverity-bot@chromium.org|coverity scan|smatch|should come before them, without any blank lines. As the|A cast of thousands|KASAN|Ryota Shiga(?: \(Flatt Security\))?|Thomas Sattler|many different companies|Coverity Static Analyzer.*|Marco Scardovi|https?://.*|Marian Rainer-Harbach|Max VA|.* working with ZDI|Android Treehugger Robot|tag, or it goes automatically\?|is not accompanied by a link to the report\.  Those links are|sanity checks in grsecurity|PaX.s SIZE_OVERFLOW plugin running on grsecurity.s syzkaller|Meysam Firouzi|Amirmohammad Eftekhar|Maarten van der Schrieck|.* \(@[^@]*\))$')
+email_ignore_list = [
+	r'',  # Skip totally empty lines
+	r'ernsteiswuerfel',
+	r'codespell',
+	r'.*@syzkaller.*.appspot.*',
+	r'syzkaller@googlegroups\.com',
+	r'abaci-bugfix@linux.alibaba.com',
+	r'(lpk|lkp)@intel.com',
+	r'ci_notify@linaro.org',
+	r'bot@kernelci.org',
+	r'patchwork-bot\+.*@kernel.org',
+	r'keescook\+coverity-bot@chromium.org',
+	r'coverity scan',
+	r'smatch',
+	r'A cast of thousands',
+	r'KASAN',
+	r'Ryota Shiga(?: \(Flatt Security\))?',
+	r'Thomas Sattler',
+	r'many different companies',
+	r'Coverity Static Analyzer.*',
+	r'Marco Scardovi',
+	r'https?://.*',
+	r'Marian Rainer-Harbach',
+	r'Max VA',
+	r'.* working with ZDI',
+	r'Android Treehugger Robot',
+	r'sanity checks in grsecurity',
+	r'PaX.s SIZE_OVERFLOW plugin running on grsecurity.s syzkaller',
+	r'Meysam Firouzi',
+	r'Amirmohammad Eftekhar',
+	r'Maarten van der Schrieck',
+	r'should come before them, without any blank lines. As the',
+	r'tag, or it goes automatically\?',
+	r'is not accompanied by a link to the report\.  Those links are',
+	r'from Christian would be very welcome\.',
+	r'for them\?',
+	r'.* \(@[^@]*\)',
+]
+email_ignore_joined = "|".join(email_ignore_list)
+email_ignore = re.compile(f'^({email_ignore_joined})$')
 # Ignore these names, which may use a "real" email address, but are considered bots.
 name_ignore = re.compile(r'^(kernel test robot|coverity-bot)$')
 # Ignore one-off typos.
 typo_ignore = re.compile(r'^$')
+# Common HTMLized emails.
+# b04d910af330b55e1d5d6eb9ecd53a375a9cf81c
+# eec812774d307f0beee12f7129a440ad314a544a
+# 561a16366ef57caad66d0dfe49275cd3f809c138
+html_email = re.compile(r'^([^&]*)&lt;<a href="mailto:([^"]*)" target="_blank">([^<]*)</a>&gt;<br>$')
 
 # Best guess adjustment of names for changes, latinization, abbreviation, and typos.
 # match: replacement
@@ -88,6 +132,7 @@ spelling = {
 		"Zqiang": "Zhang Qiang",
 		"Qiang.zhang": "Zhang Qiang",
 		"Justin M. Forbes": "Justin Forbes",
+		"Bjorn Topel": "Björn Töpel",
 		# Maybe ignore names shorter than 3 chars?
 		"sh": "Hui Su",
 		"Raphael Gallais-Pou": "Raphaël Gallais-Pou",
@@ -96,6 +141,11 @@ spelling = {
 		"Ondrej Mosnacek": "Ondrej Mosnáček",
 		# https://lore.kernel.org/all/20220915012800.825196-1-SJLIN0@nuvoton.com/
 		"SJLIN0": "Wallace Lin",
+		"Ricardo B. Marliere": "Ricardo B. Marlière",
+		"J. Neuschäfer": "Jonathan Neuschäfer",
+		# 4e51653d5d871f40f1bd5cf95cc7f2d8b33d063b
+		"cheung wall": "Qiang Zhang",
+		"Cheung Wall": "Qiang Zhang",
 	   }
 
 email_typos = {
@@ -115,6 +165,10 @@ email_typos = {
 		'mathew.j.martineau>@linux.intel.com': 'mathew.j.martineau@linux.intel.com',
 		# d1f1cecc92ae0dba44eac3ce10baf4edb4553e41
 		'irogers>@google.com': 'irogers@google.com',
+		# 586ceac9acb71c4caf84552bd29b36c799c102a0
+		'yi1.lai@linux.intel.com': 'yi1.lai@intel.com',
+		# c9d952b9103b600ddafc5d1c0e2f2dbd30f0b805
+		'Sharon Rosner': 'sharon@noteflakes.com',
 	      }
 
 full_replace = {
@@ -122,8 +176,6 @@ full_replace = {
 		'Zdenek Kabelac <mpatocka@redhat.com>': 'Zdenek Kabelac <zkabelac@redhat.com>',
 		# 77422a8f6f61be1ef64978e9a94f40fed0d1634e typo
 		'Roi Dayan <paulb@mellanox.com>': 'Roi Dayan <roid@nvidia.com>',
-		# b04d910af330b55e1d5d6eb9ecd53a375a9cf81c typo
-		'Longpeng &lt;<a href="mailto:longpeng2@huawei.com" target="_blank">longpeng2@huawei.com</a>&gt;<br>': 'Longpeng(Mike) <longpeng2@huawei.com>',
 		# 81d46d693173a5c86a9b0c648eca1817ad5c0ae5 typo
 		'Longpeng &lt;<a href="mailto:longpeng2@huawei.com" target="_blank">longpeng2@huawei.com</a>&gt;<br></blockquote><div><br></div><div>Acked-by: Jason Wang &lt;<a href="mailto:jasowang@redhat.com">jasowang@redhat.com</a>&gt;</div><div> </div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">': 'Longpeng(Mike) <longpeng2@huawei.com>',
 		# db405774f6a80c5607dcf43ec810f078bb5c660d typo
@@ -189,6 +241,29 @@ full_replace = {
 		'Matt Roper <matthew.d.roper at intel.com>': 'Matt Roper <matthew.d.roper@intel.com>',
 		# 84d2db91f14a32dc856a5972e3f0907089093c7a
 		'Bongsu Jeon': 'Bongsu Jeon <bongsu.jeon@samsung.com>',
+		# 2b0dc40ac6ca16ee0c489927f4856cf9cd3874c7
+		'Mario Limonciello (AMD) <superm1@kernel.org>> ---': 'Mario Limonciello (AMD) <superm1@kernel.org>',
+		# 56a50e37fee038d004866e5a2c479706d6034017
+		'Mario Limonciello <mario.limonciello@amd.com>> ---': 'Mario Limonciello <mario.limonciello@amd.com>',
+		# 4540f1d23e7f387880ce46d11b5cd3f27248bf8d
+		'Stanislav Fort <disclosure@aisle.com>': 'Stanislav Fort of Aisle Research <stanislav.fort@aisle.com>',
+		# 8154f3c0fd946db58ba1eed49a4f1126300f734a
+		'Nam Cao <tglx@linutronix.de>': 'Nam Cao <namcao@linutronix.de>',
+		# 128d849074d05545becf86e713715ce7676fc074
+		'Jun Li <jun.li@nxp.com>': 'Li Jun <jun.li@nxp.com>',
+		# 27873192ac5938bfa9d27348d79b931e5b438ba6
+		'Yong Wang <wang.yong12@zte.com.cn>': 'Wang Yong <wang.yong12@zte.com.cn>',
+		# Collided 9a5dd61151399ad5a5d69aad28ab164734c1e3bc (name:[Haoxiang Li] email:make24@iscas.ac.cn) on two people:
+		# 17      Ma Ke <make24@iscas.ac.cn>
+		#         Ma Ke <make_ruc2021@163.com>
+		#
+		# 27      Haoxiang Li <haoxiang_li2024@163.com>
+		#
+		# It's possible this is actually 2 people, but given that the email was
+		# sent with the full name explicitly, it seems like "Ma Ke" is an alias?
+		# https://lore.kernel.org/all/20240701064847.84726-1-make24@iscas.ac.cn/
+		'Ma Ke <make_ruc2021@163.com>': 'Haoxiang Li <make_ruc2021@163.com>',
+		'Ma Ke <make24@iscas.ac.cn>': 'Haoxiang Li <make24@iscas.ac.cn>',
 	     }
 
 def guess_name(name):
@@ -464,6 +539,12 @@ for line in sys.stdin:
 
 	# Perform full-line replacements.
 	line = full_replace.get(line, line)
+
+	# Deal with the common pasting of HTMLized email link.
+	# Sanity check that the embedded email addresses match.
+	hit = html_email.search(line)
+	if hit and hit.group(2) == hit.group(3):
+			line = "%s <%s>" % (hit.group(1), hit.group(2))
 
 	# Try to split name from email
 	hit = splitter.search(line)
