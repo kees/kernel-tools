@@ -6,4 +6,5 @@
 /.claude
 /GEMINI.md
 /.gemini
+/agentic
 
