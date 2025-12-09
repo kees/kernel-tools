@@ -1,0 +1,265 @@
+#!/bin/bash
+# This hasn't been working:
+#!/usr/bin/ssh-agent /bin/bash
+set -e
+
+remote_tag_exists () {
+	remote="$1"
+	local tag="$2"
+	[ $(git ls-remote --tags $remote $tag | wc -l) -ne 0 ]
+}
+
+usage () {
+	echo "Usage: $0 -n name (OPTIONS)"
+	echo " -t | --to		Email To (default: Linus)"
+	echo " -c | --cc		Email Cc (default: contributors)"
+	echo " -r | --remote		Remote (default: kees)"
+	echo " -b | --base		Override base SHA of pull request"
+	echo " -n | --name		Override branch name"
+	echo " -v | --version		Override version to pull to"
+	echo " -h | --help		This help text"
+	echo "Example: $0 -b v4.7 -n usercopy v4.8-rc1"
+}
+
+TO="Linus Torvalds <torvalds@linux-foundation.org>"
+CC=""
+NAME=""
+VER=""
+PULL_BRANCH=""
+REMOTE="kees"
+OVERRIDE_BASE=""
+
+while true; do
+	case "$1" in
+		-t | --to )
+			TO="$2"; shift 2 || true ;;
+		-c | --cc )
+			CC="$2"; shift 2 || true ;;
+		-n | --name )
+			NAME="$2"; shift 2 || true ;;
+		-b | --base )
+			OVERRIDE_BASE="$2"; shift 2 || true ;;
+		-r | --remote )
+			REMOTE="$2"; shift 2 || true ;;
+		-v | --version )
+			VER="$2"; shift 2 || true ;;
+		-h | --help )
+			usage ; exit 0 ;;
+		-- )
+			shift || true; break ;;
+		* )
+			break ;;
+	esac
+done
+
+TREE=""
+KEY=""
+
+case "$REMOTE" in
+	kees)
+		TREE="git://git.kernel.org/pub/scm/linux/kernel/git/kees/linux.git"
+		KEY="$HOME"/.ssh/korg.key
+		ORIGIN_NAME="origin"
+		ORIGIN_BRANCH="master"
+		;;
+	rust)
+		TREE="https://github.com/Rust-for-Linux/linux.git"
+		KEY="$HOME"/.ssh/id_rsa_github
+		ORIGIN_NAME="origin"
+		ORIGIN_BRANCH="master"
+		;;
+	*)
+		echo "Unknown remote '$REMOTE'" >&2
+		exit 1
+		;;
+esac
+
+PULL_BRANCH=$(git branch --show-current)
+
+# Fetch latest tree, so that we can get common merge base and version guess...
+git fetch -q "${ORIGIN_NAME}" "${ORIGIN_BRANCH}"
+
+# ... find the merge base
+BASE=$(git merge-base "${PULL_BRANCH}" "${ORIGIN_NAME}/${ORIGIN_BRANCH}")
+
+if [ -z "$NAME" ] ; then
+	NAME=$(git rev-parse --abbrev-ref HEAD)
+	TARGET=$(echo "$NAME" | cut -d/ -f1)
+	if [ "$TARGET" != "for-next" ] && [ "$TARGET" != "for-linus" ]; then
+		echo "Expecting 'for-next' or 'for-linus' base branch name" >&2
+		exit 1
+	fi
+	NAME=$(echo "$NAME" | cut -d/ -f2-)
+fi
+
+# Why would I ever need to override the base?
+# Leave this here for now anyway...
+if [ -n "${OVERRIDE_BASE}" ] &&  [ "${BASE}" != "${OVERRIDE_BASE}" ]; then
+	echo "Override merge base ($OVERRIDE_BASE) is not the actual merge base ($BASE)!?" >&2
+	exit 1
+fi
+
+# Sanity check patches (thanks to sfr)
+$HOME/bin/check_commits "${PULL_BRANCH}" "${BASE}..${PULL_BRANCH}"
+
+# This is very Linux-specific. I expect I'll need to make this depend
+# on an origin mapping.
+if [ -z "$VER" ] ; then
+	VER=$(git describe "${ORIGIN_NAME}/${ORIGIN_BRANCH}" --tags --abbrev=0)
+	rcnum="${VER##*-rc}"
+	prefix="${VER%-rc*}"
+	rc1=no
+	if [ "$prefix" = "$rcnum" ]; then
+		# Released version; no -rc trailer!
+		rcnum=0
+		rc1=yes
+	fi
+	new_rcnum=$(( rcnum + 1 ))
+	if [ "$rcnum" -ge 7 ]; then
+		echo "" >&2
+		echo "Assuming -rc${rcnum} origin means we want the next release." >&2
+		echo "If you want -rc${new_rcnum}, use: -v ${prefix}-rc${new_rcnum}" >&2
+		rc1=yes
+	fi
+	if [ "$rc1" = "yes" ]; then
+		clean="${prefix#v}"
+		major="${clean%%.*}"
+		minor="${clean#*.}"
+		minor=$(( minor + 1 ))
+		prefix="v${major}.${minor}"
+		new_rcnum=1
+	fi
+	VER="${prefix}-rc${new_rcnum}"
+fi
+TAG=$NAME-$VER
+
+# Check for special version needs.
+BASE_TAG=$(git tag --points-at "${BASE}")
+if [ -n "${BASE_TAG}" ]; then
+	if ! echo "$VER" | grep -q ^v ; then
+		echo "It looks like the merge point ($BASE_TAG) isn't a release tag. Use -v !" >&2
+		exit 1
+	fi
+fi
+
+if [ -z "$TO" ] ; then
+	usage >&2
+	exit 1
+fi
+# What is the first name of the person we're sending to?
+GIVEN=$(echo "$TO" | cut -d" " -f1)
+
+# What are we sending: updates (rc1) or fixes?
+COUNT=$(git log --oneline ${BASE}..${PULL_BRANCH} | wc -l)
+if echo "$VER" | grep -q -- -rc1 ; then
+	ARTICLE=this
+	NOUN=update
+	if [ $COUNT -ne 1 ]; then
+		ARTICLE=these
+		NOUN=updates
+	fi
+else
+	ARTICLE=this
+	NOUN=fix
+	if [ $COUNT -ne 1 ]; then
+		ARTICLE=these
+		NOUN=fixes
+	fi
+fi
+
+echo ""
+echo "Summary of ${NAME} PR:"
+echo "merge:   ${REMOTE} ${PULL_BRANCH}"
+echo "into:    ${ORIGIN_NAME} ${ORIGIN_BRANCH}"
+echo "for tag: ${VER}"
+echo ""
+echo "Press enter to confirm or Ctrl-C to stop"
+read
+
+ssh-add "$KEY"
+
+# Push current branch to make sure it's there.
+git push "${ORIGIN_NAME}" "${PULL_BRANCH}"
+
+# Check for existing remote tag
+git tag -d $TAG || true
+if remote_tag_exists $REMOTE $TAG ; then
+	git push $REMOTE :refs/tags/$TAG
+	echo -n "Waiting for $TAG to vanish from remote "
+	while remote_tag_exists $REMOTE $TAG ; do
+		echo -n "."
+		sleep 10
+	done
+	echo ""
+fi
+
+DESCRIPTION="$NAME $NOUN for $VER"
+
+SIGNED=~/.pull-request-signed-"$TAG"
+echo "$DESCRIPTION" > "$SIGNED"
+git request-pull ${BASE} ${TREE} "$PULL_BRANCH" | awk '{print "# " $0}' >> "$SIGNED"
+vi "$SIGNED"
+
+# Prime GPG since prompting doesn't work under git (?!)
+foo="$(mktemp -d gpg-sign-XXXXXX)"
+touch "$foo"/stamp
+gpg --clear-sign "$foo"/stamp
+rm -rf "$foo"
+
+# Prime git+ssh? (does this actually work?)
+#git push $REMOTE "$PULL_BRANCH"
+
+# This doesn't seem to help with uncache git+ssh?
+echo $GPG_TTY
+gpg-connect-agent UPDATESTARTUPTTY /bye
+
+# Add tag with above notes, signed
+git tag -sF "$SIGNED" "$TAG" "$PULL_BRANCH"
+git push $REMOTE "$PULL_BRANCH"
+git push $REMOTE +"$TAG"
+
+echo -n "Waiting for $TAG to appear on remote "
+while ! remote_tag_exists $REMOTE $TAG ; do
+	echo -n "."
+	sleep 10
+done
+echo ""
+
+REQ=~/.pull-request-"$TAG"
+cat >"$REQ" <<EOM
+
+Hi $GIVEN,
+
+Please pull $ARTICLE $DESCRIPTION.
+
+Thanks!
+
+-Kees
+
+EOM
+
+## Prime gpg-agent
+#foo=$(mktemp sign-XXXXXX)
+#gpg --clearsign $foo
+#rm -f $foo $foo.asc
+
+git request-pull ${BASE} ${TREE} $TAG >> "$REQ"
+
+CC="$CC, linux-kernel@vger.kernel.org"
+people=$(mktemp)
+git log ${BASE}..${PULL_BRANCH} | \
+	egrep '^    ((Signed-off|Reviewed|Reported|Suggested|Acked|Tested|Fixed).*-by|Cc):' | \
+	cut -d: -f2- | \
+	cut -d'#' -f1 | \
+	sed -e 's/^ *//' | \
+	sed -e 's/ *$//' | \
+	grep -v 'stable@vger.kernel.org' | \
+	sort -u >$people
+while read PERSON
+do
+	CC="$CC, $PERSON"
+done <$people
+rm -f $people
+
+mutt -i "$REQ" -s "[GIT PULL] $DESCRIPTION" -c "$CC" "$TO"
+echo 'GIT PULL Sent!'
