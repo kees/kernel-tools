@@ -66,6 +66,7 @@ email_ignore_list = [
 	r'from Christian would be very welcome\.',
 	r'for them\?',
 	r'.* \(@[^@]*\)',
+	r'BPF Runtime Fuzzer \(BRF\)',
 ]
 email_ignore_joined = "|".join(email_ignore_list)
 email_ignore = re.compile(f'^({email_ignore_joined})$')
