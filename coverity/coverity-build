@@ -353,6 +353,9 @@ coverity_upload()
 }
 
 coverity_prepare
+# Coverity is broken
+# https://community.blackduck.com/s/question/0D5Ul00000d0A95KAE/linux-scanning-is-broken-coverity-needs-to-support-fmsextensions-option
+exit 0
 coverity_build
 coverity_collect
 coverity_upload
