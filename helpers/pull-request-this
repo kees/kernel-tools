@@ -101,6 +101,7 @@ fi
 
 # Sanity check patches (thanks to sfr)
 $HOME/bin/check_commits "${PULL_BRANCH}" "${BASE}..${PULL_BRANCH}"
+export PUSH_SINCE_TAG="$BASE"
 
 # This is very Linux-specific. I expect I'll need to make this depend
 # on an origin mapping.
@@ -126,6 +127,11 @@ if [ -z "$VER" ] ; then
 		major="${clean%%.*}"
 		minor="${clean#*.}"
 		minor=$(( minor + 1 ))
+		# "Fingers and toes" rule for Linux major bumps: minor has range [0-19]
+		if [ "$minor" -ge 20 ]; then
+			minor=0
+			major=$(( major + 1 ))
+		fi
 		prefix="v${major}.${minor}"
 		new_rcnum=1
 	fi

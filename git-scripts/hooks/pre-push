@@ -37,8 +37,13 @@ do
 		# Handle delete
 		echo >&2 "pre-push: Deleting branch."
 	else
-		linus_since=$(git describe --match 'v*' --abbrev=0 $local_oid)
-		echo >&2 "pre-push: Most recent release tag:    $linus_since"
+		if [ -z "$PUSH_SINCE_TAG" ]; then
+			linus_since=$(git describe --match 'v*' --abbrev=0 $local_oid)
+			echo >&2 "pre-push: Most recent release tag:    $linus_since"
+		else
+			linus_since="$PUSH_SINCE_TAG"
+			echo >&2 "pre-push: PUSH_SINCE_TAG override:    $linus_since"
+		fi
 		since="$linus_since"
 
 		next_since=$(git describe --match 'next-*' --abbrev=0 $local_oid 2>/dev/null || true)
@@ -62,7 +67,7 @@ do
 		then
 			# New branch, examine all commits since most recent tag.
 			range="$since..$local_oid"
-			echo >&2 "pre-push: New branch. Want to check: $range"
+			echo >&2 "pre-push: New branch. Want to check:  $range"
 		else
 			# Update to existing branch, examine new commits
 
