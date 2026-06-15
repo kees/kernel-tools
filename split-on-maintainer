@@ -175,7 +175,7 @@ for line in open('MAINTAINERS'):
 		if '(' in rest:
 			rest, note = rest.split('(', 1)
 			rest = rest.strip()
-		if rest in ['Supported', 'Maintained', 'Odd Fixes', 'Odd fixes', 'Buried alive in reporters']:
+		if rest in ['Supported', 'Maintained', 'Odd Fixes', 'Odd fixes', 'Buried alive in reporters', 'Externally maintained']:
 			continue
 		elif rest in ['Orphan', 'Obsolete', 'Orphan / Obsolete']:
 			# Ignore orphan or obsolete areas
